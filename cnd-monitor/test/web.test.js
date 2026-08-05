@@ -74,14 +74,80 @@ describe('automação com navegador', async () => {
     await navegador?.close().catch(() => {});
   });
 
-  test('detecta captcha antes de tentar ler a resposta', async (t) => {
+  test('captcha visível bloqueia; invisível não', async (t) => {
     if (!navegador) return t.skip('Playwright/Chromium indisponível');
 
     await pagina.setContent('<div class="g-recaptcha"></div>');
-    assert.equal(await detectarCaptcha(pagina), '.g-recaptcha');
+    assert.deepEqual(
+      (({ provedor, bloqueante }) => ({ provedor, bloqueante }))(await detectarCaptcha(pagina)),
+      { provedor: 'reCAPTCHA', bloqueante: true },
+    );
+
+    // hCaptcha invisível, como o do portal da Receita: existe, mas não pede
+    // nada ao usuário — recusar a consulta só por ele estar lá seria exagero.
+    await pagina.setContent(
+      '<iframe src="https://newassets.hcaptcha.com/captcha/v1/x/static/hcaptcha.html#frame=checkbox-invisible&recaptchacompat=true&size=invisible"></iframe>',
+    );
+    const invisivel = await detectarCaptcha(pagina);
+    assert.equal(invisivel.provedor, 'hCaptcha', 'hcaptcha vem antes de recaptchacompat');
+    assert.equal(invisivel.invisivel, true);
+    assert.equal(invisivel.bloqueante, false);
 
     await pagina.setContent('<form><input id="NI"></form>');
     assert.equal(await detectarCaptcha(pagina), null);
+  });
+
+  test('o campo do CNPJ não pode casar com a busca do topo do site', async (t) => {
+    if (!navegador) return t.skip('Playwright/Chromium indisponível');
+
+    const { RECEITAS } = await import('../src/receitas/index.js');
+
+    // Layout do portal: a busca do site vem antes do formulário no DOM.
+    await pagina.setContent(`
+      <input id="searchbox" type="text" placeholder="O que você procura?">
+      <br-input><input id="id3f7317eeae4b2c" type="text" placeholder="Informe o CNPJ"></br-input>`);
+
+    const escolhido = await esperarSeletor(
+      pagina,
+      RECEITAS.rfb_pgfn.seletores.campoDocumento,
+      3000,
+    );
+    const id = await pagina.locator(escolhido).first().getAttribute('id');
+    assert.notEqual(id, 'searchbox', 'ia digitar o CNPJ na busca do site');
+    assert.equal(id, 'id3f7317eeae4b2c');
+  });
+
+  test('a preparação tira a barra de cookies da frente', async (t) => {
+    if (!navegador) return t.skip('Playwright/Chromium indisponível');
+
+    const receita = receitaFormulario({
+      id: 'fixture',
+      nome: 'Portal de teste',
+      url: 'about:blank',
+      preparacao: [{ descricao: 'cookies', candidatos: ['button:has-text("Aceitar")'] }],
+      seletores: {
+        campoDocumento: ['#NI'],
+        botaoEnviar: ['#validar'],
+        alvoResultado: ['#saida'],
+      },
+    });
+
+    await pagina.setContent(`
+      <button onclick="document.getElementById('barra').remove()">Aceitar</button>
+      <div id="barra">cookies</div>
+      <input id="NI">
+      <button id="validar" onclick="document.getElementById('saida').textContent='Certidão Negativa'"></button>
+      <div id="saida"></div>`);
+
+    const resultado = await receita.executar({
+      pagina,
+      cliente: { documento: '11222333000181', tipo: 'cnpj' },
+      primeiroSeletorPresente,
+      esperarSeletor,
+    });
+
+    assert.equal(resultado.situacao, 'negativa');
+    assert.equal(await pagina.locator('#barra').count(), 0, 'a barra foi aceita');
   });
 
   test('escolhe o primeiro seletor candidato que existe', async (t) => {

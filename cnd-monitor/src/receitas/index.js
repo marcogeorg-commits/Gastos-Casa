@@ -45,6 +45,13 @@ export function receitaFormulario(config) {
       const esperar = esperarSeletor ?? primeiroSeletorPresente;
       const { campoDocumento, campoNascimento, botaoEnviar, alvoResultado } = config.seletores;
 
+      // Barras de cookie e modais de aviso cobrem o formulário e engolem o
+      // clique. Cada passo é opcional: se não estiver na tela, segue adiante.
+      for (const passo of config.preparacao ?? []) {
+        const alvo = await primeiroSeletorPresente(pagina, passo.candidatos);
+        if (alvo) await pagina.click(alvo, { timeout: 5000 }).catch(() => {});
+      }
+
       const campo = await esperar(pagina, campoDocumento);
       if (!campo) {
         return {
@@ -131,20 +138,33 @@ export const RECEITAS = {
     formatoDocumento: 'formatado',
     // Confirmado no portal: a emissão leva a #/home/<tipo>/resultado.
     urlResultado: /#\/home\/(cnpj|cpf|cib|cno)\/resultado/,
+    preparacao: [
+      { descricao: 'aceitar cookies', candidatos: ['br-cookie-bar button:has-text("Aceitar")'] },
+      { descricao: 'fechar aviso de mudança de NI', candidatos: ['modal-mudanca-ni button'] },
+    ],
     seletores: {
+      // Calibrado no portal: o campo tem id gerado a cada render
+      // (#id3f7317eeae4b2c), então o id não serve de âncora. O placeholder é o
+      // que identifica. `input[type=text]` está fora de propósito: a busca do
+      // topo (#searchbox) também é text e vem antes no DOM — casaria primeiro e
+      // o CNPJ iria parar no campo de busca do site.
       campoDocumento: [
-        'input[formcontrolname="cnpj"]',
-        'input[formcontrolname="cpf"]',
-        'input[name="NI"]',
-        '#NI',
-        'input[type="text"]',
+        'input[placeholder="Informe o CNPJ"]',
+        'input[placeholder="Informe o CPF"]',
+        'br-input input:not(#searchbox)',
+        'app-coleta-parametros-pj input[type="text"]',
       ],
       campoNascimento: [
+        'input[placeholder*="nascimento" i]',
         'input[formcontrolname="dataNascimento"]',
-        'input[name="dataNascimento"]',
       ],
-      botaoEnviar: ['button[type="submit"]', 'button:has-text("Consultar")', '#validar'],
-      alvoResultado: ['.resultado', '#idResultado', 'main', 'body'],
+      // Os botões não têm id; o texto é a única âncora estável. "Emitir" gera a
+      // certidão do momento, que é o que a rotina precisa.
+      botaoEnviar: [
+        'button:has-text("Emitir Certidão")',
+        'button:has-text("Consultar Certidão")',
+      ],
+      alvoResultado: ['app-resultado', 'main', 'body'],
     },
   }),
 

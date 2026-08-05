@@ -55,23 +55,41 @@ export async function encerrar() {
   navegador = null;
 }
 
+const MARCAS_CAPTCHA = [
+  'iframe[src*="hcaptcha"]',
+  'iframe[src*="recaptcha"]',
+  '.g-recaptcha',
+  '[class*="hcaptcha"]',
+  '[id*="captcha" i]',
+  'input[name*="captcha" i]',
+  'img[src*="captcha" i]',
+];
+
 /**
- * Um captcha na pagina invalida a automacao. Detectado antes de qualquer
- * tentativa de leitura, para nao interpretar a pagina do desafio como resposta.
+ * Detecta captcha e diz se ele bloqueia a automacao.
+ *
+ * A distincao importa: o captcha **invisivel** (hCaptcha/reCAPTCHA v3) nao pede
+ * nada ao usuario -- pontua o comportamento em segundo plano e so desafia sob
+ * suspeita. Recusar a consulta so por ele existir descartaria um portal que
+ * talvez responda normalmente. Ja o captcha visivel exige interacao humana e
+ * nao ha o que tentar.
+ *
+ * O portal da Receita usa hCaptcha invisivel, cuja URL contem
+ * `recaptchacompat=true` -- por isso hcaptcha e testado antes, senao a marca de
+ * reCAPTCHA casaria primeiro e o diagnostico nomearia o provedor errado.
  */
 export async function detectarCaptcha(pagina) {
-  const marcas = [
-    'iframe[src*="recaptcha"]',
-    'iframe[src*="hcaptcha"]',
-    '.g-recaptcha',
-    '[class*="hcaptcha"]',
-    '[id*="captcha" i]',
-    'input[name*="captcha" i]',
-    'img[src*="captcha" i]',
-  ];
+  for (const seletor of MARCAS_CAPTCHA) {
+    const alvo = pagina.locator(seletor).first();
+    if ((await pagina.locator(seletor).count()) === 0) continue;
 
-  for (const marca of marcas) {
-    if ((await pagina.locator(marca).count()) > 0) return marca;
+    const src = (await alvo.getAttribute('src').catch(() => null)) ?? '';
+    const tamanho = (await alvo.getAttribute('data-size').catch(() => null)) ?? '';
+    const provedor = /hcaptcha/i.test(src) || /hcaptcha/i.test(seletor) ? 'hCaptcha' : 'reCAPTCHA';
+    const invisivel =
+      /size=invisible/i.test(src) || /checkbox-invisible/i.test(src) || tamanho === 'invisible';
+
+    return { seletor, provedor, invisivel, bloqueante: !invisivel };
   }
   return null;
 }
@@ -155,10 +173,10 @@ export async function consultar({ cliente, idCertidao, env = process.env }) {
       const temFormulario = await esperarSeletor(pagina, receita.seletores.campoDocumento);
 
       const captcha = await detectarCaptcha(pagina);
-      if (captcha) {
+      if (captcha?.bloqueante) {
         return {
           situacao: 'manual',
-          detalhe: `${receita.nome} protegido por captcha (${captcha}) — não automatizável sem um provedor pago.`,
+          detalhe: `${receita.nome} protegido por ${captcha.provedor} visível — exige interação humana.`,
         };
       }
 
@@ -167,12 +185,19 @@ export async function consultar({ cliente, idCertidao, env = process.env }) {
         continue;
       }
 
-      return await receita.executar({
+      const resultado = await receita.executar({
         pagina,
         cliente,
         primeiroSeletorPresente,
         esperarSeletor,
       });
+
+      // Captcha invisivel nao impede a tentativa, mas explica um fracasso: sem
+      // essa nota, uma consulta barrada pareceria um portal fora do ar.
+      if (captcha && resultado.situacao === 'erro') {
+        resultado.detalhe = `${resultado.detalhe} (a página usa ${captcha.provedor} invisível — pode ter barrado a automação)`;
+      }
+      return resultado;
     }
 
     return {

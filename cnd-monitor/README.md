@@ -84,14 +84,21 @@ npm install playwright && npx playwright install chromium
 node src/index.js --provedor web
 ```
 
-**O captcha é o limite real.** Ele está nesses portais exatamente para impedir
-automação, e o provedor não tenta contorná-lo: quando detecta um, a consulta
-volta como *conferência manual* com o motivo — nunca como um resultado
-inventado. Resolver captcha é boa parte do que se paga num provedor de API.
+**O captcha é o limite real** — mas nem todo captcha bloqueia. O provedor não
+tenta contornar nenhum; ele distingue os dois casos:
+
+- **visível** (caixinha "não sou um robô", imagem com letras): exige interação
+  humana. A consulta volta como *conferência manual*, sem tentar.
+- **invisível** (hCaptcha/reCAPTCHA v3): não pede nada, pontua o comportamento
+  em segundo plano e só desafia sob suspeita. A consulta é tentada; se falhar, o
+  relatório registra que a página usa captcha invisível e pode ter barrado.
+
+O portal da Receita usa **hCaptcha invisível** (confirmado na calibração), então
+a rota gratuita é tentada — mas só o uso real dirá se ele deixa passar.
 
 | Certidão | Expectativa no `web` |
 |---|---|
-| CND Federal (PJ) | **confirmado: sem captcha** — consulta pública, só CNPJ |
+| CND Federal (PJ) | consulta pública, só CNPJ; hCaptcha **invisível** — tenta e reporta se barrar |
 | CND Federal (PF) | funciona se o cadastro tiver `dataNascimento`; sem ela, vira conferência manual |
 | CRF do FGTS, CNDT, SEFAZ/SC | historicamente com captcha — a calibração confirma |
 
