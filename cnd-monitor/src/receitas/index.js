@@ -82,6 +82,12 @@ export function receitaFormulario(config) {
       }
 
       await pagina.click(botao);
+
+      // Num SPA nao ha navegacao: o sinal confiavel de que a consulta terminou
+      // e a rota mudar para a tela de resultado.
+      if (config.urlResultado) {
+        await pagina.waitForURL(config.urlResultado, { timeout: 45_000 }).catch(() => {});
+      }
       await pagina.waitForLoadState('networkidle').catch(() => {});
 
       const alvo = await esperar(pagina, alvoResultado ?? []);
@@ -123,6 +129,8 @@ export const RECEITAS = {
     },
     urls: [PORTAL_RFB],
     formatoDocumento: 'formatado',
+    // Confirmado no portal: a emissão leva a #/home/<tipo>/resultado.
+    urlResultado: /#\/home\/(cnpj|cpf|cib|cno)\/resultado/,
     seletores: {
       campoDocumento: [
         'input[formcontrolname="cnpj"]',

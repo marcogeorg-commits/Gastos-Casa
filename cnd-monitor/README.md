@@ -91,7 +91,7 @@ inventado. Resolver captcha é boa parte do que se paga num provedor de API.
 
 | Certidão | Expectativa no `web` |
 |---|---|
-| CND Federal (PJ) | melhor candidato — consulta pública, só CNPJ |
+| CND Federal (PJ) | **confirmado: sem captcha** — consulta pública, só CNPJ |
 | CND Federal (PF) | funciona se o cadastro tiver `dataNascimento`; sem ela, vira conferência manual |
 | CRF do FGTS, CNDT, SEFAZ/SC | historicamente com captcha — a calibração confirma |
 
@@ -107,7 +107,23 @@ sujeito**, e a receita escolhe a rota pelo documento do cliente:
 
 Por ser SPA, o formulário só existe depois que o JavaScript renderiza: o
 provedor **espera** o campo aparecer em vez de sondar uma vez só. Sondagem
-instantânea daria "campo não encontrado" mesmo com a URL certa.
+instantânea daria "campo não encontrado" mesmo com a URL certa. E como não há
+navegação de página, o sinal de que a consulta terminou é a rota virar
+`#/home/<tipo>/resultado`.
+
+#### O desfecho "informações insuficientes"
+
+O portal responde, em parte dos casos:
+
+> As informações disponíveis na Receita Federal e na Procuradoria-Geral da
+> Fazenda Nacional sobre o contribuinte X são insuficientes para emitir a
+> certidão pela Internet.
+
+Isso significa que **o cliente não tem CND**: há pendência a regularizar antes
+de conseguir a certidão. A rotina classifica como `nao_emitida`, conta como
+pendência e mostra em vermelho, no mesmo peso de uma certidão positiva. O texto
+não traz nenhuma das palavras-chave usuais — sem tratá-lo à parte, o caso que
+mais exige atenção viraria "resposta não reconhecida".
 
 Outras limitações honestas:
 

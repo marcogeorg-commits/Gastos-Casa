@@ -116,6 +116,17 @@ export const SITUACOES = {
     status: 'good',
     pendencia: false,
   },
+  // "Informações insuficientes para emitir a certidão pela Internet" e o jeito
+  // que o portal diz que o cliente NAO tem CND: ha pendencia a resolver antes
+  // de conseguir a certidao. Na pratica pesa o mesmo que uma positiva -- por
+  // isso vem em vermelho, e nao como um aviso.
+  nao_emitida: {
+    rotulo: 'Não emitida — há pendências a regularizar',
+    curto: 'Não emitida',
+    icone: '✕',
+    status: 'critical',
+    pendencia: true,
+  },
   // `manual` nao conta como pendencia: e uma limitacao estrutural da fonte (o
   // CADIN federal cai aqui para todo mundo), nao um problema do cliente. Fica
   // em sua propria secao do relatorio para nao afogar os debitos de verdade.

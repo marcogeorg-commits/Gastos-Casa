@@ -17,6 +17,19 @@ export function interpretarTexto(texto) {
   const t = semAcento(texto);
   if (!t) return null;
 
+  // Desfecho comum no portal da Receita: "As informações disponíveis (...) são
+  // insuficientes para emitir a certidão pela Internet". Não é negativa nem
+  // positiva -- exige atendimento presencial ou e-CAC, e por isso vem antes de
+  // qualquer outra regra: a frase contém "certidao" e nada mais que sirva.
+  if (
+    t.includes('insuficientes para emitir') ||
+    t.includes('insuficiente para emitir') ||
+    t.includes('nao foi possivel emitir') ||
+    t.includes('nao e possivel emitir')
+  ) {
+    return 'nao_emitida';
+  }
+
   // Mais especifico primeiro: "positiva com efeito de negativa" contem as duas
   // palavras e nao pode cair na regra de "negativa".
   if (t.includes('positiva com efeito') || t.includes('efeito de negativa')) {

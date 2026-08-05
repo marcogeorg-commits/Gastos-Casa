@@ -25,6 +25,27 @@ test('classifica os textos que os portais realmente usam', () => {
   assert.equal(interpretarTexto('página em manutenção'), null);
 });
 
+test('"informações insuficientes" é o portal dizendo que não há CND', () => {
+  // Texto exato devolvido pelo portal da Receita. Não traz nenhuma das
+  // palavras-chave usuais, e ignorá-lo faria a rotina dizer "não reconhecida"
+  // para o caso em que o cliente mais precisa de atenção.
+  const texto =
+    'As informações disponíveis na Receita Federal e na Procuradoria-Geral da ' +
+    'Fazenda Nacional sobre o contribuinte 28.282.552/0001-59 são insuficientes ' +
+    'para emitir a certidão pela Internet.';
+
+  assert.equal(interpretarTexto(texto), 'nao_emitida');
+  assert.equal(interpretarTexto('Não foi possível emitir a certidão'), 'nao_emitida');
+});
+
+test('não emitida conta como pendência e aparece em vermelho', async () => {
+  const { descreverSituacao } = await import('../src/catalogo.js');
+  const s = descreverSituacao('nao_emitida');
+
+  assert.equal(s.pendencia, true);
+  assert.equal(s.status, 'critical');
+});
+
 /**
  * Os testes abaixo exercitam a automacao ponta a ponta contra um portal falso
  * servido de file://. Cobrem tudo menos o acesso ao site real -- que nao da

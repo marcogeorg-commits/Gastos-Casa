@@ -383,6 +383,7 @@ export function gerarHtml({ competencia, execucao, config }) {
         ${selo('negativa', { curto: false })}
         ${selo('positiva_com_efeito_negativo', { curto: false })}
         ${selo('positiva', { curto: false })}
+        ${selo('nao_emitida', { curto: false })}
         ${selo('manual', { curto: false })}
         ${selo('erro', { curto: false })}
         ${selo('nao_aplicavel', { curto: false })}
