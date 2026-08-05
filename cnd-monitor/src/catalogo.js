@@ -18,7 +18,7 @@ export const CATALOGO = {
     validadeDias: 180,
     provedores: ['serpro', 'infosimples', 'web', 'mock'],
     urlManual:
-      'https://servicos.receita.fazenda.gov.br/servicos/certidaointernet/pj/emitir',
+      'https://solucoes.receita.fazenda.gov.br/Servicos/certidaointernet/PJ/Emitir',
   },
 
   cadin_federal: {
@@ -63,7 +63,7 @@ export const CATALOGO = {
     aceita: ['cnpj'],
     validadeDias: 90,
     provedores: ['infosimples', 'web', 'mock'],
-    urlManual: 'https://sat.sef.sc.gov.br/tax.net/Sat.CtaCte.Web/CertidaoSolicitar.aspx',
+    urlManual: 'https://sat.sef.sc.gov.br/tax.NET/Sat.CtaCte.Web/SolicitacaoCnd.aspx',
   },
 
   municipal: {

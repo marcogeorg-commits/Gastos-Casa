@@ -70,13 +70,30 @@ export async function calibrar(idCertidao, opcoes = {}) {
     const pagina = await navegador.newPage({ locale: 'pt-BR' });
     pagina.setDefaultTimeout(45_000);
 
-    console.log(`Abrindo ${receita.url}`);
-    await pagina.goto(receita.url, { waitUntil: 'domcontentloaded' });
+    // Percorre todas as URLs da receita e fica na primeira que abrir: o
+    // diagnóstico precisa dizer qual endereço ainda está de pé.
+    let urlAberta = null;
+    for (const url of receita.urls) {
+      process.stdout.write(`Abrindo ${url} ... `);
+      try {
+        const resposta = await pagina.goto(url, { waitUntil: 'domcontentloaded' });
+        console.log(`HTTP ${resposta?.status() ?? '?'}`);
+        urlAberta = url;
+        break;
+      } catch (erro) {
+        console.log(`falhou (${erro.message.split('\n')[0]})`);
+      }
+    }
+
+    if (!urlAberta) {
+      throw new Error('Nenhuma URL da receita abriu a partir desta máquina.');
+    }
 
     const captcha = await detectarCaptcha(pagina);
     const inventario = await inventariar(pagina);
 
-    console.log(`\nTítulo: ${inventario.titulo}`);
+    console.log(`\nURL: ${urlAberta}`);
+    console.log(`Título: ${inventario.titulo}`);
     console.log(captcha ? `Captcha detectado: ${captcha}` : 'Sem captcha aparente.');
 
     console.log('\nCampos:');
@@ -100,7 +117,7 @@ export async function calibrar(idCertidao, opcoes = {}) {
     await pagina.screenshot({ path: resolve(pasta, `${idCertidao}.png`), fullPage: true });
     await writeFile(
       resolve(pasta, `${idCertidao}.json`),
-      `${JSON.stringify({ url: receita.url, captcha, ...inventario }, null, 2)}\n`,
+      `${JSON.stringify({ url: urlAberta, urlsTentadas: receita.urls, captcha, ...inventario }, null, 2)}\n`,
       'utf8',
     );
     console.log(`\nInventário e captura salvos em calibracao/${idCertidao}.*`);

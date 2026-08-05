@@ -109,17 +109,44 @@ export async function consultar({ cliente, idCertidao, env = process.env }) {
   pagina.setDefaultTimeout(TEMPO_LIMITE);
 
   try {
-    await pagina.goto(receita.url, { waitUntil: 'domcontentloaded' });
+    // Portais publicos trocam de endereco sem aviso (e sem redirecionar), entao
+    // a receita pode listar varias URLs. Vale a primeira que abrir com o
+    // formulario esperado.
+    const urls = receita.urls ?? [receita.url];
+    const tentativas = [];
 
-    const captcha = await detectarCaptcha(pagina);
-    if (captcha) {
-      return {
-        situacao: 'manual',
-        detalhe: `${receita.nome} protegido por captcha (${captcha}) — não automatizável sem um provedor pago.`,
-      };
+    for (const url of urls) {
+      try {
+        await pagina.goto(url, { waitUntil: 'domcontentloaded' });
+      } catch (erro) {
+        tentativas.push(`${url}: ${erro.message.split('\n')[0]}`);
+        continue;
+      }
+
+      const captcha = await detectarCaptcha(pagina);
+      if (captcha) {
+        return {
+          situacao: 'manual',
+          detalhe: `${receita.nome} protegido por captcha (${captcha}) — não automatizável sem um provedor pago.`,
+        };
+      }
+
+      const temFormulario = await primeiroSeletorPresente(
+        pagina,
+        receita.seletores.campoDocumento,
+      );
+      if (!temFormulario) {
+        tentativas.push(`${url}: abriu, mas sem o campo do documento`);
+        continue;
+      }
+
+      return await receita.executar({ pagina, cliente, primeiroSeletorPresente });
     }
 
-    return await receita.executar({ pagina, cliente, primeiroSeletorPresente });
+    return {
+      situacao: 'erro',
+      detalhe: `Nenhuma URL apresentou o formulário esperado — ${tentativas.join('; ')}. Rode "npm run calibrar -- ${receita.id}".`,
+    };
   } catch (erro) {
     return { situacao: 'erro', detalhe: `${receita.nome}: ${erro.message}` };
   } finally {

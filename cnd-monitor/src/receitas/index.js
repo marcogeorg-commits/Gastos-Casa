@@ -23,9 +23,13 @@ const REGEX_CONTROLE = /c[óo]digo\s+de\s+controle[:\s]+([A-Z0-9.\-]{6,})/i;
  * Todo portal de certidão pública segue essa mesma forma.
  */
 export function receitaFormulario(config) {
+  const urls = config.urls ?? [config.url];
+
   return {
+    id: config.id,
     nome: config.nome,
-    url: config.url,
+    url: urls[0],
+    urls,
     seletores: config.seletores,
     impedimento: config.impedimento,
 
@@ -36,7 +40,7 @@ export function receitaFormulario(config) {
       if (!campo) {
         return {
           situacao: 'erro',
-          detalhe: `Campo do documento não encontrado em ${config.url}. Rode "npm run calibrar -- ${config.id}" e atualize os seletores.`,
+          detalhe: `Campo do documento não encontrado em ${urls[0]}. Rode "npm run calibrar -- ${config.id}" e atualize os seletores.`,
         };
       }
 
@@ -50,7 +54,7 @@ export function receitaFormulario(config) {
       if (!botao) {
         return {
           situacao: 'erro',
-          detalhe: `Botão de envio não encontrado em ${config.url}. Rode "npm run calibrar -- ${config.id}".`,
+          detalhe: `Botão de envio não encontrado em ${urls[0]}. Rode "npm run calibrar -- ${config.id}".`,
         };
       }
 
@@ -86,7 +90,10 @@ export const RECEITAS = {
     nome: 'CND Federal (RFB/PGFN)',
     // O caminho da emissão muda entre PJ e PF; a receita usa o de PJ e recusa
     // CPF, porque a emissão para pessoa física pede também a data de nascimento.
-    url: 'https://servicos.receita.fazenda.gov.br/servicos/certidaointernet/PJ/Emitir',
+    urls: [
+      'https://solucoes.receita.fazenda.gov.br/Servicos/certidaointernet/PJ/Emitir',
+      'https://servicos.receitafederal.gov.br/servico/certidoes/',
+    ],
     formatoDocumento: 'digitos',
     seletores: {
       campoDocumento: ['#NI', 'input[name="NI"]', '#txtCNPJ', 'input[name="cnpj"]'],
@@ -102,7 +109,7 @@ export const RECEITAS = {
   cndt: receitaFormulario({
     id: 'cndt',
     nome: 'CNDT (TST)',
-    url: 'https://cndt-certidao.tst.jus.br/inicio.faces',
+    urls: ['https://cndt-certidao.tst.jus.br/inicio.faces', 'https://cndt-certidao.tst.jus.br/'],
     formatoDocumento: 'formatado',
     seletores: {
       campoDocumento: ['#gerarCertidaoForm\\:cpfCnpj', 'input[name*="cpfCnpj"]'],
@@ -114,7 +121,7 @@ export const RECEITAS = {
   fgts_crf: receitaFormulario({
     id: 'fgts_crf',
     nome: 'CRF do FGTS (Caixa)',
-    url: 'https://consulta-crf.caixa.gov.br/consultacrf/pages/consultaEmpregador.jsf',
+    urls: ['https://consulta-crf.caixa.gov.br/consultacrf/pages/consultaEmpregador.jsf'],
     formatoDocumento: 'digitos',
     seletores: {
       campoDocumento: ['#mainForm\\:txtInscricao1', 'input[name*="txtInscricao"]'],
@@ -126,7 +133,7 @@ export const RECEITAS = {
   sefaz_sc: receitaFormulario({
     id: 'sefaz_sc',
     nome: 'CND Estadual SC (SEF/SC)',
-    url: 'https://sat.sef.sc.gov.br/tax.net/Sat.CtaCte.Web/CertidaoSolicitar.aspx',
+    urls: ['https://sat.sef.sc.gov.br/tax.NET/Sat.CtaCte.Web/SolicitacaoCnd.aspx'],
     formatoDocumento: 'digitos',
     seletores: {
       campoDocumento: ['#txtCnpj', 'input[name*="Cnpj"]', 'input[type="text"]'],
