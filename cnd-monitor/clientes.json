@@ -1,0 +1,31 @@
+{
+  "_leiame": "Copie para clientes.json e substitua pelos dados reais. Os documentos abaixo sao ficticios: tem digito verificador valido, mas nao correspondem a empresas existentes.",
+
+  "provedorPadrao": "mock",
+
+  "provedores": {
+    "rfb_pgfn": "mock",
+    "fgts_crf": "mock",
+    "cndt": "mock",
+    "sefaz_sc": "mock",
+    "municipal": "mock"
+  },
+
+  "certidoes": ["rfb_pgfn", "cadin_federal", "fgts_crf", "cndt", "sefaz_sc", "municipal"],
+
+  "clientes": [
+    { "nome": "Alfa Comércio de Alimentos Ltda", "documento": "11.222.333/0001-81", "municipio": "Blumenau", "uf": "SC" },
+    { "nome": "Beta Serviços Contábeis Ltda", "documento": "22.333.444/0001-81", "municipio": "Blumenau", "uf": "SC" },
+    { "nome": "Gama Transportes Ltda", "documento": "33.444.555/0001-81", "municipio": "Gaspar", "uf": "SC" },
+    { "nome": "Delta Indústria Têxtil S/A", "documento": "44.555.666/0001-81", "municipio": "Brusque", "uf": "SC" },
+    { "nome": "Epsilon Hotelaria Ltda", "documento": "55.666.777/0001-81", "municipio": "Balneário Camboriú", "uf": "SC" },
+    { "nome": "Zeta Engenharia Ltda", "documento": "66.777.888/0001-81", "municipio": "Itajaí", "uf": "SC" },
+    { "nome": "Eta Clínica Médica Ltda", "documento": "77.888.999/0001-81", "municipio": "Blumenau", "uf": "SC" },
+    { "nome": "Teta Participações Ltda", "documento": "88.999.000/1001-41", "municipio": "Florianópolis", "uf": "SC" },
+
+    { "nome": "João da Silva (sócio administrador)", "documento": "123.456.780-62", "observacao": "Pessoa física: só RFB/PGFN, CADIN e CNDT se aplicam." },
+    { "nome": "Maria Souza (produtora rural)", "documento": "234.567.890-92" },
+
+    { "nome": "Iota Comércio ME (baixada)", "documento": "345.678.901-75", "ativo": false }
+  ]
+}

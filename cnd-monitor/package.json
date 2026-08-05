@@ -1,0 +1,14 @@
+{
+  "name": "cnd-monitor",
+  "version": "1.0.0",
+  "description": "Consulta mensal de certidoes negativas (RFB/PGFN, CADIN, FGTS, CNDT, SEFAZ/SC e municipal) para a carteira de clientes",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "consultar": "node src/index.js",
+    "test": "node --test \"test/*.test.js\""
+  }
+}
