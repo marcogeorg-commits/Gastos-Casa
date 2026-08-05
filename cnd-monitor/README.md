@@ -21,6 +21,47 @@ Saídas:
 | `relatorios/ultimo.html` | cópia da última execução |
 | `historico/AAAA-MM.json` | resultado bruto, base da comparação entre meses |
 
+## Painel
+
+Interface para cadastrar clientes e acompanhar as competências sem editar JSON
+na mão:
+
+```bash
+npm run painel      # http://localhost:8787
+```
+
+- **Clientes** — cadastro com validação de CPF/CNPJ enquanto se digita, escolha
+  das certidões por cliente e marcação de ativo/inativo. Certidão que não se
+  aplica ao tipo de documento aparece esmaecida; cliente sem lista própria herda
+  a da configuração, e o primeiro clique passa a valer só para ele.
+- **Situação atual** — matriz cliente × certidão da última execução, com o
+  detalhe devolvido pelo órgão no *tooltip*.
+- **Competências** — uma linha por execução, com link para cada relatório.
+
+O painel **não grava em disco**: você baixa o `clientes.json` e substitui o
+arquivo. Enquanto isso, o rascunho fica no navegador — fechar a aba com
+alterações não salvas dispara aviso.
+
+Existe um servidor local porque `file://` bloqueia `fetch` de arquivos vizinhos:
+aberto com dois cliques, o painel não conseguiria ler o histórico. Ele serve só
+a pasta do `cnd-monitor`, só em `localhost`, e não escreve nada.
+
+## Onde guardar o quê
+
+| Dado | Onde | Por quê |
+|---|---|---|
+| CNPJ/CPF dos clientes | `clientes.json`, **repositório privado** | a rotina precisa ler; são dados cadastrais, não credenciais |
+| Certidões emitidas (PDF) | `certidoes/`, no repositório | é o comprovante que você vai anexar em licitação ou banco |
+| Capturas de falha | `calibracao/falha-*`, **fora do versionamento** | mostram tela de consulta real, com dado fiscal |
+| Token da Infosimples / chaves SERPRO | **GitHub Secrets** | credencial nunca entra no código |
+| **Certificado digital A1 (`.pfx` + senha)** | **nunca no repositório** | quem tem o arquivo e a senha assume a identidade fiscal do cliente |
+
+Sobre o A1: um `.pfx` commitado continua no histórico do Git mesmo depois de
+apagado, e qualquer pessoa com acesso ao repositório — hoje ou no futuro — pode
+assinar como aquele cliente. Se o CADIN federal entrar na automação (ele exige
+e-CAC com certificado e procuração), o caminho é rodar na máquina do escritório,
+com o certificado no chaveiro do sistema, e não no GitHub Actions.
+
 ## Comparação mês a mês
 
 A partir da segunda execução, o relatório abre com **o que mudou desde a última

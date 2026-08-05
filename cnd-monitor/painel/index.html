@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Painel de Certidões</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --plano: #f9f9f7;
+    --surface: #fcfcfb;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --ink-mudo: #898781;
+    --linha: #e1e0d9;
+    --borda: rgba(11, 11, 11, 0.10);
+    --good: #0ca30c;
+    --warning: #fab219;
+    --serious: #ec835a;
+    --critical: #d03b3b;
+    --lavagem: rgba(11, 11, 11, 0.035);
+    --azul: #2a78d6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --plano: #0d0d0d; --surface: #1a1a19; --ink: #fff; --ink-2: #c3c2b7;
+      --linha: #2c2c2a; --borda: rgba(255,255,255,0.10); --lavagem: rgba(255,255,255,0.045);
+      --azul: #3987e5;
+    }
+  }
+  :root[data-theme="dark"] {
+    --plano: #0d0d0d; --surface: #1a1a19; --ink: #fff; --ink-2: #c3c2b7;
+    --linha: #2c2c2a; --borda: rgba(255,255,255,0.10); --lavagem: rgba(255,255,255,0.045);
+    --azul: #3987e5;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 28px 20px 64px;
+    background: var(--plano); color: var(--ink);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .folha { max-width: 1120px; margin: 0 auto; }
+
+  header { margin-bottom: 22px; }
+  h1 { margin: 0 0 4px; font-size: 25px; letter-spacing: -0.01em; }
+  .sub { margin: 0; color: var(--ink-2); font-size: 15px; }
+
+  .abas { display: flex; gap: 4px; margin: 22px 0 18px; border-bottom: 1px solid var(--linha); }
+  .aba {
+    appearance: none; background: none; border: 0; border-bottom: 2px solid transparent;
+    padding: 9px 14px; font: inherit; font-size: 15px; color: var(--ink-2); cursor: pointer;
+  }
+  .aba[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--azul); font-weight: 600; }
+
+  .cartao {
+    background: var(--surface); border: 1px solid var(--borda);
+    border-radius: 10px; padding: 18px; margin-bottom: 16px;
+  }
+  h2 { font-size: 17px; margin: 0 0 4px; }
+  .ajuda { margin: 0 0 14px; color: var(--ink-2); font-size: 14px; }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 18px; }
+  .tile { background: var(--surface); border: 1px solid var(--borda); border-radius: 10px; padding: 15px 17px; }
+  .tile__valor { font-size: 31px; font-weight: 600; line-height: 1.1; }
+  .tile--good .tile__valor { color: var(--good); }
+  .tile--critical .tile__valor { color: var(--critical); }
+  .tile__rotulo { margin-top: 5px; font-size: 14px; color: var(--ink-2); }
+
+  .rolagem { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { padding: 8px 10px; text-align: left; vertical-align: middle; }
+  thead th { border-bottom: 1px solid var(--linha); font-weight: 600; white-space: nowrap; }
+  tbody tr:nth-child(even) { background: var(--lavagem); }
+  td.num { font-variant-numeric: tabular-nums; }
+
+  input[type="text"], select {
+    width: 100%; min-width: 90px; padding: 6px 8px; font: inherit; font-size: 14px;
+    color: var(--ink); background: var(--surface);
+    border: 1px solid var(--borda); border-radius: 6px;
+  }
+  input.invalido { border-color: var(--critical); }
+  .erro-campo { display: block; margin-top: 3px; font-size: 11px; color: var(--critical); }
+
+  button {
+    appearance: none; font: inherit; font-size: 14px; cursor: pointer;
+    padding: 7px 13px; border-radius: 7px;
+    border: 1px solid var(--borda); background: var(--surface); color: var(--ink);
+  }
+  button:hover { background: var(--lavagem); }
+  button.principal { background: var(--azul); border-color: var(--azul); color: #fff; }
+  button.principal:hover { filter: brightness(1.08); }
+  button.icone { padding: 4px 9px; color: var(--ink-2); }
+  .acoes { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 14px; }
+  .empurra { margin-left: auto; }
+
+  .selo { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 500; white-space: nowrap; }
+  .selo__i { font-size: 11px; }
+  .selo--good .selo__i { color: var(--good); }
+  .selo--warning .selo__i { color: var(--warning); }
+  .selo--serious .selo__i { color: var(--serious); }
+  .selo--critical .selo__i { color: var(--critical); }
+  .selo--neutro { color: var(--ink-mudo); }
+
+  .marcadores { display: flex; flex-wrap: wrap; gap: 5px; }
+  .marcador {
+    font-size: 11px; padding: 2px 7px; border-radius: 999px;
+    border: 1px solid var(--borda); color: var(--ink-2); cursor: pointer; user-select: none;
+  }
+  .marcador[aria-pressed="true"] { border-color: var(--azul); color: var(--azul); font-weight: 600; }
+
+  .aviso {
+    display: flex; gap: 9px; padding: 12px 14px; border-radius: 8px;
+    border: 1px solid var(--warning); font-size: 14px; color: var(--ink-2); margin-bottom: 16px;
+  }
+  .aviso strong { color: var(--ink); }
+  .aviso--perigo { border-color: var(--critical); }
+
+  .vazio { color: var(--ink-mudo); font-size: 14px; padding: 10px 0; }
+  code { font-size: 13px; background: var(--lavagem); padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="folha">
+  <header>
+    <h1>Painel de Certidões</h1>
+    <p class="sub">Cadastro dos clientes e acompanhamento das competências.</p>
+  </header>
+
+  <div class="abas" role="tablist">
+    <button class="aba" role="tab" data-painel="clientes" aria-selected="true">Clientes</button>
+    <button class="aba" role="tab" data-painel="situacao" aria-selected="false">Situação atual</button>
+    <button class="aba" role="tab" data-painel="competencias" aria-selected="false">Competências</button>
+  </div>
+
+  <section id="painel-clientes"></section>
+  <section id="painel-situacao" hidden></section>
+  <section id="painel-competencias" hidden></section>
+</div>
+
+<script type="module">
+// ---------------------------------------------------------------------------
+// Validação de documento — mesma regra do src/documentos.js, reescrita aqui
+// porque o painel é uma página estática sem etapa de build. Se um dia divergir,
+// o cadastro aceitaria o que a rotina rejeita: o teste do painel compara as duas.
+// ---------------------------------------------------------------------------
+const PESOS_CPF_1 = [10,9,8,7,6,5,4,3,2];
+const PESOS_CPF_2 = [11,10,9,8,7,6,5,4,3,2];
+const PESOS_CNPJ_1 = [5,4,3,2,9,8,7,6,5,4,3,2];
+const PESOS_CNPJ_2 = [6,5,4,3,2,9,8,7,6,5,4,3,2];
+
+const limpar = (v) => String(v ?? '').toUpperCase().replace(/[^0-9A-Z]/g, '');
+
+function tipoDocumento(v) {
+  const b = limpar(v);
+  if (/^\d{11}$/.test(b)) return 'cpf';
+  if (/^[0-9A-Z]{12}\d{2}$/.test(b)) return 'cnpj';
+  return null;
+}
+
+function dv(valores, pesos) {
+  const resto = valores.reduce((a, v, i) => a + v * pesos[i], 0) % 11;
+  return resto < 2 ? 0 : 11 - resto;
+}
+
+function validar(v) {
+  const b = limpar(v);
+  const tipo = tipoDocumento(b);
+  if (tipo === 'cpf') {
+    if (/^(\d)\1{10}$/.test(b)) return false;
+    const d = b.split('').map(Number);
+    return dv(d.slice(0, 9), PESOS_CPF_1) === d[9] && dv(d.slice(0, 10), PESOS_CPF_2) === d[10];
+  }
+  if (tipo === 'cnpj') {
+    if (/^(\d)\1{13}$/.test(b)) return false;
+    // CNPJ alfanumérico (IN RFB 2.229/2024): valor do caractere é ASCII menos 48.
+    const val = b.split('').map((c) => c.charCodeAt(0) - 48);
+    return dv(val.slice(0, 12), PESOS_CNPJ_1) === val[12] && dv(val.slice(0, 13), PESOS_CNPJ_2) === val[13];
+  }
+  return false;
+}
+
+function formatar(v) {
+  const b = limpar(v);
+  const tipo = tipoDocumento(b);
+  if (tipo === 'cpf') return b.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
+  if (tipo === 'cnpj') {
+    return b.replace(/^([0-9A-Z]{2})([0-9A-Z]{3})([0-9A-Z]{3})([0-9A-Z]{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+  }
+  return b;
+}
+
+// ---------------------------------------------------------------------------
+// Catálogo — espelha src/catalogo.js no que o painel precisa exibir.
+// ---------------------------------------------------------------------------
+const CERTIDOES = {
+  rfb_pgfn:      { nome: 'CND Federal',      aceita: ['cnpj', 'cpf'] },
+  cadin_federal: { nome: 'CADIN Federal',    aceita: ['cnpj', 'cpf'] },
+  fgts_crf:      { nome: 'CRF do FGTS',      aceita: ['cnpj', 'cpf'] },
+  cndt:          { nome: 'CNDT Trabalhista', aceita: ['cnpj', 'cpf'] },
+  sefaz_sc:      { nome: 'CND Estadual SC',  aceita: ['cnpj'], },
+  municipal:     { nome: 'CND Municipal',    aceita: ['cnpj'], exigeMunicipio: true },
+};
+
+const SITUACOES = {
+  negativa:                     { rotulo: 'Negativa',        icone: '✓', status: 'good' },
+  positiva_com_efeito_negativo: { rotulo: 'Efeito negativa', icone: '✓', status: 'good' },
+  sem_registro:                 { rotulo: 'Nada consta',     icone: '✓', status: 'good' },
+  positiva:                     { rotulo: 'Débitos',         icone: '✕', status: 'critical' },
+  nao_emitida:                  { rotulo: 'Não emitida',     icone: '✕', status: 'critical' },
+  manual:                       { rotulo: 'Manual',          icone: '▲', status: 'warning' },
+  erro:                         { rotulo: 'Falha',           icone: '▲', status: 'serious' },
+  nao_aplicavel:                { rotulo: 'n/a',             icone: '–', status: 'neutro' },
+};
+
+const descrever = (s) => SITUACOES[s] ?? SITUACOES.erro;
+
+// ---------------------------------------------------------------------------
+// Estado
+// ---------------------------------------------------------------------------
+const CHAVE_RASCUNHO = 'cnd-monitor:clientes';
+const estado = { config: null, competencias: [], atual: null, sujo: false };
+
+const esc = (v) => String(v ?? '')
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+async function buscarJson(caminho) {
+  try {
+    const r = await fetch(caminho, { cache: 'no-store' });
+    return r.ok ? await r.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+function selo(situacao) {
+  const s = descrever(situacao);
+  return `<span class="selo selo--${s.status}"><span class="selo__i" aria-hidden="true">${s.icone}</span>${esc(s.rotulo)}</span>`;
+}
+
+// ---------------------------------------------------------------------------
+// Aba: clientes
+// ---------------------------------------------------------------------------
+/**
+ * Certidoes efetivas do cliente.
+ *
+ * Sem lista propria ele herda a da raiz do arquivo -- e era assim que a rotina
+ * ja se comportava. Mostrar tudo desligado nesse caso faria o painel mentir
+ * sobre o que esta sendo consultado.
+ */
+function certidoesDe(cliente) {
+  return cliente.certidoes ?? estado.config?.certidoes ?? Object.keys(CERTIDOES);
+}
+
+function linhaCliente(cliente, i) {
+  const tipo = tipoDocumento(cliente.documento);
+  const documentoOk = !cliente.documento || validar(cliente.documento);
+  const ativas = certidoesDe(cliente);
+  const herdado = cliente.certidoes === undefined;
+  const faltaMunicipio = ativas.includes('municipal') && !cliente.municipio;
+
+  const marcadores = Object.entries(CERTIDOES)
+    .map(([id, meta]) => {
+      const aplicavel = !tipo || meta.aceita.includes(tipo);
+      const ativo = ativas.includes(id);
+      const motivo = !aplicavel
+        ? `não se aplica a ${tipo}`
+        : herdado
+          ? 'herdado da configuração; clique para definir só para este cliente'
+          : '';
+      return `<span class="marcador" role="button" tabindex="0"
+        aria-pressed="${ativo}" data-certidao="${id}" data-i="${i}"
+        style="${aplicavel ? '' : 'opacity:.35;pointer-events:none'}"
+        title="${esc(motivo)}">${esc(meta.nome)}</span>`;
+    })
+    .join('');
+
+  return `
+    <tr>
+      <td><input type="text" value="${esc(cliente.nome ?? '')}" data-campo="nome" data-i="${i}" placeholder="Razão social"></td>
+      <td class="num">
+        <input type="text" class="${documentoOk ? '' : 'invalido'}" value="${esc(cliente.documento ?? '')}"
+               data-campo="documento" data-i="${i}" placeholder="CNPJ ou CPF">
+        ${documentoOk ? '' : '<span class="erro-campo">dígito verificador inválido</span>'}
+      </td>
+      <td>
+        <input type="text" value="${esc(cliente.municipio ?? '')}" data-campo="municipio" data-i="${i}" placeholder="Município">
+        ${faltaMunicipio ? '<span class="erro-campo">exigido pela CND Municipal</span>' : ''}
+      </td>
+      <td class="num"><input type="text" value="${esc(cliente.dataNascimento ?? '')}" data-campo="dataNascimento" data-i="${i}"
+             placeholder="${tipo === 'cpf' ? 'dd/mm/aaaa' : '—'}" ${tipo === 'cnpj' ? 'disabled' : ''}></td>
+      <td><div class="marcadores">${marcadores}</div></td>
+      <td><input type="checkbox" data-campo="ativo" data-i="${i}" ${cliente.ativo === false ? '' : 'checked'}></td>
+      <td><button class="icone" data-remover="${i}" title="Remover cliente">✕</button></td>
+    </tr>`;
+}
+
+function renderClientes() {
+  const alvo = document.getElementById('painel-clientes');
+  const clientes = estado.config?.clientes ?? [];
+  const invalidos = clientes.filter((c) => c.documento && !validar(c.documento)).length;
+
+  alvo.innerHTML = `
+    <div class="aviso aviso--perigo">
+      <span aria-hidden="true">▲</span>
+      <span><strong>Este cadastro contém CNPJ e CPF de clientes.</strong>
+      Mantenha o repositório privado. Certificado digital A1 (arquivo <code>.pfx</code> e senha)
+      <strong>não deve ser guardado aqui</strong> — nem no repositório, nem neste painel.</span>
+    </div>
+
+    <div class="cartao">
+      <h2>Clientes monitorados</h2>
+      <p class="ajuda">Clique nas certidões para ligar ou desligar cada uma. As que não se
+      aplicam ao tipo de documento ficam esmaecidas. Sem escolha própria, o cliente
+      herda a lista da configuração — o primeiro clique passa a valer só para ele.</p>
+
+      <div class="rolagem">
+        <table>
+          <thead><tr>
+            <th style="min-width:200px">Nome</th><th style="min-width:150px">Documento</th>
+            <th style="min-width:130px">Município</th><th style="min-width:110px">Nascimento</th>
+            <th style="min-width:320px">Certidões</th><th>Ativo</th><th></th>
+          </tr></thead>
+          <tbody>${clientes.map(linhaCliente).join('') ||
+            '<tr><td colspan="7" class="vazio">Nenhum cliente. Use “Acrescentar cliente”.</td></tr>'}</tbody>
+        </table>
+      </div>
+
+      <div class="acoes">
+        <button id="acrescentar">Acrescentar cliente</button>
+        <button id="importar">Importar clientes.json</button>
+        <input type="file" id="arquivo" accept=".json" hidden>
+        <span class="empurra"></span>
+        ${invalidos > 0 ? `<span class="erro-campo">${invalidos} documento(s) inválido(s)</span>` : ''}
+        <button class="principal" id="baixar">Baixar clientes.json</button>
+      </div>
+      <p class="ajuda" style="margin-top:12px">
+        O painel não grava em disco. Baixe o arquivo e substitua
+        <code>cnd-monitor/clientes.json</code> — a rotina lê de lá.
+      </p>
+    </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Aba: situação atual
+// ---------------------------------------------------------------------------
+function renderSituacao() {
+  const alvo = document.getElementById('painel-situacao');
+  const dados = estado.atual;
+
+  if (!dados) {
+    alvo.innerHTML = `<div class="cartao"><h2>Sem execuções</h2>
+      <p class="ajuda">Rode <code>npm run consultar</code> e recarregue esta página.</p></div>`;
+    return;
+  }
+
+  const r = dados.resumo ?? {};
+  const porCliente = new Map();
+  for (const item of dados.resultados ?? []) {
+    if (!porCliente.has(item.documento)) porCliente.set(item.documento, { nome: item.cliente, itens: new Map() });
+    porCliente.get(item.documento).itens.set(item.certidao, item);
+  }
+
+  const colunas = Object.keys(CERTIDOES).filter((id) =>
+    (dados.resultados ?? []).some((x) => x.certidao === id));
+
+  const linhas = [...porCliente.entries()].map(([doc, c]) => `
+      <tr>
+        <th scope="row">${esc(c.nome)}<br><span class="vazio num">${esc(formatar(doc))}</span></th>
+        ${colunas.map((id) => {
+          const item = c.itens.get(id);
+          return `<td title="${esc(item?.detalhe ?? '')}">${item ? selo(item.situacao) : selo('nao_aplicavel')}</td>`;
+        }).join('')}
+      </tr>`).join('');
+
+  alvo.innerHTML = `
+    <div class="tiles">
+      <div class="tile"><div class="tile__valor">${r.clientes ?? 0}</div><div class="tile__rotulo">Clientes</div></div>
+      <div class="tile tile--good"><div class="tile__valor">${(r.consultas ?? 0) - (r.clientesComPendencia ?? 0)}</div><div class="tile__rotulo">Consultas sem pendência</div></div>
+      <div class="tile ${r.clientesComPendencia ? 'tile--critical' : 'tile--good'}"><div class="tile__valor">${r.clientesComPendencia ?? 0}</div><div class="tile__rotulo">Clientes com débito ou falha</div></div>
+      <div class="tile"><div class="tile__valor">${r.manuais ?? 0}</div><div class="tile__rotulo">Conferências manuais</div></div>
+    </div>
+
+    <div class="cartao">
+      <h2>Competência ${esc(dados.competencia)}</h2>
+      <p class="ajuda">Passe o mouse sobre uma célula para ver o detalhe devolvido pelo órgão.
+        <a href="../relatorios/${esc(dados.competencia)}.html" target="_blank" rel="noopener">Abrir relatório completo</a></p>
+      <div class="rolagem">
+        <table>
+          <thead><tr><th>Cliente</th>${colunas.map((id) => `<th>${esc(CERTIDOES[id].nome)}</th>`).join('')}</tr></thead>
+          <tbody>${linhas}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Aba: competências
+// ---------------------------------------------------------------------------
+function renderCompetencias() {
+  const alvo = document.getElementById('painel-competencias');
+  const lista = estado.competencias;
+
+  if (lista.length === 0) {
+    alvo.innerHTML = `<div class="cartao"><h2>Sem histórico</h2>
+      <p class="ajuda">Cada execução grava um arquivo em <code>historico/</code>.</p></div>`;
+    return;
+  }
+
+  alvo.innerHTML = `
+    <div class="cartao">
+      <h2>Execuções</h2>
+      <p class="ajuda">Uma linha por competência, da mais recente para a mais antiga.</p>
+      <div class="rolagem">
+        <table>
+          <thead><tr><th>Competência</th><th>Clientes</th><th>Consultas</th>
+            <th>Com pendência</th><th>Manuais</th><th>Relatório</th></tr></thead>
+          <tbody>${lista.map((c) => `
+            <tr>
+              <td class="num">${esc(c.competencia)}</td>
+              <td class="num">${c.resumo?.clientes ?? '—'}</td>
+              <td class="num">${c.resumo?.consultas ?? '—'}</td>
+              <td class="num">${c.resumo?.clientesComPendencia ?? '—'}</td>
+              <td class="num">${c.resumo?.manuais ?? '—'}</td>
+              <td><a href="../relatorios/${esc(c.competencia)}.html" target="_blank" rel="noopener">abrir</a></td>
+            </tr>`).join('')}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Interação
+// ---------------------------------------------------------------------------
+function salvarRascunho() {
+  estado.sujo = true;
+  try {
+    localStorage.setItem(CHAVE_RASCUNHO, JSON.stringify(estado.config));
+  } catch {
+    // Sem localStorage (aba privada) o painel segue funcionando sem rascunho.
+  }
+}
+
+document.addEventListener('input', (e) => {
+  const { campo, i } = e.target.dataset;
+  if (campo === undefined) return;
+
+  const cliente = estado.config.clientes[Number(i)];
+  cliente[campo] = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+  if (campo === 'ativo') cliente.ativo = e.target.checked;
+  salvarRascunho();
+
+  // Só o documento muda a estrutura da linha (tipo, certidões aplicáveis).
+  if (campo === 'documento') {
+    const foco = e.target.selectionStart;
+    renderClientes();
+    const novo = document.querySelector(`[data-campo="documento"][data-i="${i}"]`);
+    novo?.focus();
+    novo?.setSelectionRange(foco, foco);
+  }
+});
+
+document.addEventListener('click', (e) => {
+  const marcador = e.target.closest('[data-certidao]');
+  if (marcador) {
+    const cliente = estado.config.clientes[Number(marcador.dataset.i)];
+    const id = marcador.dataset.certidao;
+    const atuais = new Set(certidoesDe(cliente));
+    atuais.has(id) ? atuais.delete(id) : atuais.add(id);
+    cliente.certidoes = [...atuais];
+    salvarRascunho();
+    renderClientes();
+    return;
+  }
+
+  const remover = e.target.closest('[data-remover]');
+  if (remover) {
+    const cliente = estado.config.clientes[Number(remover.dataset.remover)];
+    if (confirm(`Remover ${cliente.nome || 'este cliente'} do monitoramento?`)) {
+      estado.config.clientes.splice(Number(remover.dataset.remover), 1);
+      salvarRascunho();
+      renderClientes();
+    }
+    return;
+  }
+
+  if (e.target.id === 'acrescentar') {
+    estado.config.clientes.push({ nome: '', documento: '', certidoes: Object.keys(CERTIDOES) });
+    salvarRascunho();
+    renderClientes();
+    document.querySelector('tbody tr:last-child input')?.focus();
+    return;
+  }
+
+  if (e.target.id === 'importar') { document.getElementById('arquivo').click(); return; }
+
+  if (e.target.id === 'baixar') {
+    const conteudo = JSON.stringify(estado.config, null, 2) + '\n';
+    const url = URL.createObjectURL(new Blob([conteudo], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'clientes.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    estado.sujo = false;
+    return;
+  }
+
+  const aba = e.target.closest('.aba');
+  if (aba) {
+    for (const outra of document.querySelectorAll('.aba')) {
+      const ativa = outra === aba;
+      outra.setAttribute('aria-selected', String(ativa));
+      document.getElementById(`painel-${outra.dataset.painel}`).hidden = !ativa;
+    }
+  }
+});
+
+document.addEventListener('keydown', (e) => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.dataset.certidao) {
+    e.preventDefault();
+    e.target.click();
+  }
+});
+
+document.addEventListener('change', async (e) => {
+  if (e.target.id !== 'arquivo' || !e.target.files?.[0]) return;
+  try {
+    estado.config = JSON.parse(await e.target.files[0].text());
+    estado.config.clientes ??= [];
+    salvarRascunho();
+    renderClientes();
+  } catch (erro) {
+    alert(`Arquivo inválido: ${erro.message}`);
+  }
+});
+
+// Trabalho não baixado se perderia ao fechar a aba.
+window.addEventListener('beforeunload', (e) => {
+  if (estado.sujo) e.preventDefault();
+});
+
+// ---------------------------------------------------------------------------
+// Carga inicial
+// ---------------------------------------------------------------------------
+async function iniciar() {
+  const rascunho = (() => {
+    try { return JSON.parse(localStorage.getItem(CHAVE_RASCUNHO) ?? 'null'); } catch { return null; }
+  })();
+
+  estado.config = rascunho ?? (await buscarJson('../clientes.json')) ?? { provedorPadrao: 'mock', clientes: [] };
+  estado.config.clientes ??= [];
+  estado.sujo = Boolean(rascunho);
+
+  const indice = await buscarJson('../historico/index.json');
+  estado.competencias = indice?.competencias ?? [];
+  if (estado.competencias[0]) {
+    estado.atual = await buscarJson(`../historico/${estado.competencias[0].competencia}.json`);
+  }
+
+  renderClientes();
+  renderSituacao();
+  renderCompetencias();
+}
+
+iniciar();
+</script>
+</body>
+</html>

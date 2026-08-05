@@ -1,4 +1,4 @@
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { descreverSituacao } from './catalogo.js';
 
@@ -122,4 +122,35 @@ export function descreverMudanca(mudanca) {
   if (mudanca.tipo === 'novo') return `passou a ser monitorada — ${para}`;
   if (mudanca.tipo === 'removido') return `saiu do monitoramento — estava ${de}`;
   return `${de} → ${para}`;
+}
+
+/**
+ * Grava `historico/index.json` com o resumo de cada competencia.
+ *
+ * Uma pagina estatica nao consegue listar diretorio: sem esse indice o painel
+ * nao teria como descobrir quais competencias existem.
+ */
+export async function escreverIndice(pasta) {
+  const competencias = await listarCompetencias(pasta);
+  const entradas = [];
+
+  for (const competencia of competencias) {
+    try {
+      const dados = JSON.parse(await readFile(resolve(pasta, `${competencia}.json`), 'utf8'));
+      entradas.push({
+        competencia,
+        geradoEm: dados.geradoEm ?? null,
+        resumo: dados.resumo ?? null,
+      });
+    } catch {
+      // Competência ilegível não invalida o índice das outras.
+    }
+  }
+
+  await writeFile(
+    resolve(pasta, 'index.json'),
+    `${JSON.stringify({ competencias: entradas.reverse() }, null, 2)}\n`,
+    'utf8',
+  );
+  return entradas;
 }

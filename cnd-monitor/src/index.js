@@ -6,7 +6,7 @@ import { carregarConfig, credenciaisDoAmbiente } from './config.js';
 import { descreverSituacao } from './catalogo.js';
 import { executar } from './executor.js';
 import { gerarHtml } from './relatorio.js';
-import { carregarAnterior, compararComAnterior } from './historico.js';
+import { carregarAnterior, compararComAnterior, escreverIndice } from './historico.js';
 
 const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -92,6 +92,10 @@ cnd-monitor — consulta mensal de certidões da carteira de clientes
     `${JSON.stringify({ competencia, ...execucao }, null, 2)}\n`,
     'utf8',
   );
+
+  // Índice das competências: uma página estática não consegue listar diretório,
+  // e é por aqui que o painel descobre o que existe.
+  await escreverIndice(pastaHistorico);
 
   const { resumo } = execucao;
   console.log(

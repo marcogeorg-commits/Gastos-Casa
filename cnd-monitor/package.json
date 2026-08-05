@@ -9,6 +9,7 @@
   },
   "scripts": {
     "consultar": "node src/index.js",
+    "painel": "node src/servidor.js",
     "calibrar": "node src/calibrar.js",
     "preparar-web": "npm install playwright && npx playwright install chromium",
     "test": "node --test \"test/*.test.js\""
