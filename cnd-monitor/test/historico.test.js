@@ -124,3 +124,13 @@ test('a transição é descrita em português, não em códigos', () => {
 
   assert.equal(descreverMudanca(mudanca), 'Negativa → Não emitida — há pendências a regularizar');
 });
+
+test('rodada avulsa não é comparada com competência real', async () => {
+  // `--competencia teste` roda com um cadastro reduzido. Compará-la com agosto
+  // apontava dezenas de "clientes removidos" que nunca saíram de lugar nenhum.
+  const pasta = await historicoTemporario({ '2026-08': [item('A', 'rfb_pgfn', 'negativa')] });
+
+  assert.equal(await carregarAnterior(pasta, 'teste'), null);
+  assert.equal(await carregarAnterior(pasta, 'homologacao'), null);
+  assert.notEqual(await carregarAnterior(pasta, '2026-09'), null);
+});

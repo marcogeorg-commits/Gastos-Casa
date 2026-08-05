@@ -151,3 +151,68 @@ test('sem limite configurado, a rodada segue normalmente', async () => {
   const execucao = await executar(config, credenciaisDoAmbiente({}));
   assert.equal(execucao.resultados.length, 1);
 });
+
+test('rótulo que não é competência não vira "undefined de NaN"', async () => {
+  const { gerarHtml } = await import('../src/relatorio.js');
+  const config = await configTemporaria({
+    provedorPadrao: 'mock',
+    certidoes: ['rfb_pgfn'],
+    clientes: [{ nome: 'Alfa', documento: '11.222.333/0001-81' }],
+  });
+  const execucao = await executar(config, credenciaisDoAmbiente({}));
+
+  const avulsa = gerarHtml({ competencia: 'teste', execucao, config });
+  assert.match(avulsa, /Competência teste/);
+  assert.doesNotMatch(avulsa, /undefined|NaN/);
+
+  const real = gerarHtml({ competencia: '2026-08', execucao, config });
+  assert.match(real, /agosto de 2026/);
+});
+
+test('o relatório concorda em número com um único cliente', async () => {
+  const { gerarHtml } = await import('../src/relatorio.js');
+  const config = await configTemporaria({
+    provedorPadrao: 'mock',
+    certidoes: ['rfb_pgfn'],
+    clientes: [{ nome: 'Alfa', documento: '11.222.333/0001-81' }],
+  });
+  const execucao = await executar(config, credenciaisDoAmbiente({}));
+  const html = gerarHtml({ competencia: '2026-08', execucao, config });
+
+  assert.match(html, /1 cliente na carteira/);
+  assert.doesNotMatch(html, /1 clientes/);
+  assert.doesNotMatch(html, /1 certidões por cliente/);
+});
+
+test('falha técnica vira frase que um contador entende', async () => {
+  const { gerarHtml } = await import('../src/relatorio.js');
+  const config = await configTemporaria({
+    provedorPadrao: 'web',
+    certidoes: ['rfb_pgfn'],
+    clientes: [{ nome: 'Alfa', documento: '11.222.333/0001-81' }],
+  });
+
+  const execucao = {
+    geradoEm: '2026-08-05T12:00:00.000Z',
+    avisos: [],
+    resultados: [
+      {
+        cliente: 'Alfa',
+        documento: '11.222.333/0001-81',
+        certidao: 'rfb_pgfn',
+        certidaoNome: 'CND Federal',
+        orgao: 'Receita Federal / PGFN',
+        situacao: 'erro',
+        detalhe: 'page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://servicos.receitafederal.gov.br',
+      },
+    ],
+    resumo: { consultas: 1, clientes: 1, clientesComPendencia: 1, manuais: 0, porSituacao: {} },
+  };
+
+  const html = gerarHtml({ competencia: '2026-08', execucao, config });
+
+  assert.match(html, /Não foi possível acessar o portal do órgão/);
+  // O detalhe técnico continua na página, mas em segundo plano.
+  assert.match(html, /pend__tecnico/);
+  assert.match(html, /ERR_TUNNEL_CONNECTION_FAILED/);
+});

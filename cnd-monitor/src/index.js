@@ -83,6 +83,13 @@ cnd-monitor — consulta mensal de certidões da carteira de clientes
       console.log(
         `  [${String(concluidas).padStart(3)}/${total}] ${resultado.cliente} · ${resultado.certidaoNome}: ${s.rotulo}`,
       );
+
+      // O que deu errado precisa aparecer aqui. Sem isso, todo diagnóstico
+      // começa por abrir o JSON do histórico à procura do motivo.
+      if (s.pendencia || s.manual) {
+        const motivo = String(resultado.detalhe ?? '').trim();
+        if (motivo) console.log(`        ${motivo.slice(0, 300)}`);
+      }
     },
   });
 

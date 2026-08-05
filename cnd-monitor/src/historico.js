@@ -45,6 +45,10 @@ export async function listarCompetencias(pasta) {
  * execucao real.
  */
 export async function carregarAnterior(pasta, competencia) {
+  // Rodada avulsa (`--competencia teste`) não é ponto no tempo: compará-la com
+  // agosto produzia dezenas de "mudanças" que são só cadastros diferentes.
+  if (!/^\d{4}-\d{2}$/.test(String(competencia ?? ''))) return null;
+
   const anteriores = (await listarCompetencias(pasta)).filter((c) => c < competencia);
   const alvo = anteriores.at(-1);
   if (!alvo) return null;

@@ -14,9 +14,56 @@ function esc(valor) {
     .replace(/"/g, '&quot;');
 }
 
+/**
+ * "2026-08" vira "agosto de 2026". Rotulo que nao seja competencia -- uma
+ * rodada avulsa como `--competencia teste` -- volta como veio: montar a frase
+ * assim mesmo produzia "undefined de NaN" no titulo do relatorio.
+ */
 function competenciaPorExtenso(competencia) {
-  const [ano, mes] = competencia.split('-').map(Number);
-  return `${MESES[mes - 1]} de ${ano}`;
+  const casa = String(competencia ?? '').match(/^(\d{4})-(\d{2})$/);
+  if (!casa) return String(competencia ?? '');
+
+  const [, ano, mes] = casa;
+  return `${MESES[Number(mes) - 1]} de ${ano}`;
+}
+
+/** Concordancia de numero: "1 cliente" e "10 clientes". */
+function contar(quantidade, singular, plural) {
+  return `${quantidade} ${quantidade === 1 ? singular : plural}`;
+}
+
+/**
+ * Motivo em portugues de gente.
+ *
+ * O detalhe tecnico e util para quem for corrigir, mas o relatorio e lido por
+ * quem precisa decidir o que fazer com o cliente. Despejar
+ * "net::ERR_TUNNEL_CONNECTION_FAILED" ali nao informa ninguem.
+ */
+function motivoLegivel(detalhe) {
+  const bruto = String(detalhe ?? '').trim();
+  if (!bruto) return { frase: '', tecnico: '' };
+
+  const regras = [
+    [/net::|ERR_|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|tunnel|getaddrinfo/i,
+      'Não foi possível acessar o portal do órgão a partir desta máquina — rede, proxy ou portal fora do ar.'],
+    [/calibrar/i,
+      'O layout do portal mudou e a automação não achou o que esperava. É preciso recalibrar os seletores.'],
+    [/credenciais ausentes/i,
+      'Faltam as credenciais do provedor contratado.'],
+    [/captcha/i,
+      'O portal exige verificação humana (captcha) para esta consulta.'],
+    [/tente novamente|não foi possível concluir/i,
+      'O sistema do órgão respondeu que não conseguiu concluir agora. Não é informação sobre o cliente.'],
+    [/data de nascimento/i,
+      'Falta a data de nascimento no cadastro deste cliente.'],
+    [/não trouxe texto/i,
+      'O portal respondeu sem conteúdo reconhecível.'],
+  ];
+
+  for (const [padrao, frase] of regras) {
+    if (padrao.test(bruto)) return { frase, tecnico: bruto };
+  }
+  return { frase: bruto, tecnico: '' };
 }
 
 function dataHora(iso) {
@@ -78,7 +125,12 @@ function linhaPendencia(item) {
             ${selo(item.situacao, { curto: false })}
           </div>
           <div class="pend__certidao">${esc(item.certidaoNome)} · ${esc(item.orgao)}</div>
-          <p class="pend__detalhe">${esc(item.detalhe ?? s.rotulo)}</p>
+          <p class="pend__detalhe">${esc(motivoLegivel(item.detalhe).frase || s.rotulo)}</p>
+          ${
+            motivoLegivel(item.detalhe).tecnico
+              ? `<p class="pend__tecnico">${esc(motivoLegivel(item.detalhe).tecnico)}</p>`
+              : ''
+          }
           ${link}
         </li>`;
 }
@@ -353,6 +405,10 @@ export function gerarHtml({ competencia, execucao, config, comparacao = null }) 
   .pend__doc { color: var(--ink-mudo); font-size: 13px; font-variant-numeric: tabular-nums; }
   .pend__certidao { margin-top: 2px; font-size: 13px; color: var(--ink-2); }
   .pend__detalhe { margin: 6px 0 0; font-size: 14px; color: var(--ink-2); }
+  .pend__tecnico {
+    margin: 4px 0 0; font-size: 12px; color: var(--ink-mudo);
+    word-break: break-word;
+  }
   .pend__link { font-size: 13px; color: var(--ink-2); }
 
   .marca {
@@ -400,17 +456,17 @@ export function gerarHtml({ competencia, execucao, config, comparacao = null }) 
 <div class="folha">
   <header>
     <h1>Monitor de Certidões</h1>
-    <p class="sub">Competência ${esc(competenciaPorExtenso(competencia))} · ${resumo.clientes} clientes na carteira</p>
+    <p class="sub">Competência ${esc(competenciaPorExtenso(competencia))} · ${esc(contar(resumo.clientes, 'cliente', 'clientes'))} na carteira</p>
     <p class="meta">Gerado em ${esc(dataHora(geradoEm))} · provedor padrão: ${esc(config.provedorPadrao)}</p>
   </header>
 
   <div class="tiles">
-    ${tile(resumo.clientes, 'Clientes monitorados', `${colunas.length} certidões por cliente`)}
-    ${tile(regulares, 'Certidões regulares', `de ${resumo.consultas} consultas`, 'good')}
+    ${tile(resumo.clientes, 'Clientes monitorados', contar(colunas.length, 'certidão por cliente', 'certidões por cliente'))}
+    ${tile(regulares, 'Certidões regulares', `de ${contar(resumo.consultas, 'consulta', 'consultas')}`, 'good')}
     ${tile(
       resumo.clientesComPendencia,
       'Clientes com débito ou falha',
-      `${pendencias.length} itens abertos`,
+      contar(pendencias.length, 'item aberto', 'itens abertos'),
       statusGeral,
     )}
     ${
