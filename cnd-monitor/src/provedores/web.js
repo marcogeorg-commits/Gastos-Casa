@@ -1,0 +1,128 @@
+/**
+ * Provedor "web" -- automacao propria com Playwright, sem custo por consulta.
+ *
+ * Limitacao honesta: portais que exigem captcha nao sao automatizaveis por aqui,
+ * e o captcha esta la justamente para isso. Quando a receita detecta um, a
+ * consulta volta como `manual` com o motivo -- nunca como um resultado
+ * inventado. Resolver captcha e exatamente o que se paga ao contratar um
+ * provedor de automacao.
+ *
+ * Os seletores de cada portal ficam em `src/receitas/`. Rode
+ * `npm run calibrar -- <certidao>` a partir de uma maquina com acesso aos
+ * portais para conferir/atualizar os seletores de uma vez.
+ */
+
+import { RECEITAS } from '../receitas/index.js';
+
+export const id = 'web';
+export const nome = 'Automação própria (Playwright)';
+
+const TEMPO_LIMITE = 45_000;
+
+export function credenciaisFaltando() {
+  return []; // Consulta publica: nao ha credencial a exigir.
+}
+
+let navegador = null;
+
+async function abrirNavegador(env) {
+  if (navegador) return navegador;
+
+  let chromium;
+  try {
+    ({ chromium } = await import('playwright'));
+  } catch {
+    throw new Error(
+      'O provedor "web" exige o Playwright. Rode: npm install playwright && npx playwright install chromium',
+    );
+  }
+
+  navegador = await chromium.launch({
+    headless: env.WEB_HEADLESS !== 'false',
+    // Em ambientes que ja trazem o Chromium (CI, container), aponte para ele.
+    ...(env.PLAYWRIGHT_EXECUTABLE_PATH
+      ? { executablePath: env.PLAYWRIGHT_EXECUTABLE_PATH }
+      : {}),
+    args: ['--no-sandbox'],
+  });
+  return navegador;
+}
+
+/** Fecha o navegador compartilhado ao fim da rodada. */
+export async function encerrar() {
+  if (!navegador) return;
+  await navegador.close().catch(() => {});
+  navegador = null;
+}
+
+/**
+ * Um captcha na pagina invalida a automacao. Detectado antes de qualquer
+ * tentativa de leitura, para nao interpretar a pagina do desafio como resposta.
+ */
+export async function detectarCaptcha(pagina) {
+  const marcas = [
+    'iframe[src*="recaptcha"]',
+    'iframe[src*="hcaptcha"]',
+    '.g-recaptcha',
+    '[class*="hcaptcha"]',
+    '[id*="captcha" i]',
+    'input[name*="captcha" i]',
+    'img[src*="captcha" i]',
+  ];
+
+  for (const marca of marcas) {
+    if ((await pagina.locator(marca).count()) > 0) return marca;
+  }
+  return null;
+}
+
+/** Tenta cada seletor candidato e devolve o primeiro presente na pagina. */
+export async function primeiroSeletorPresente(pagina, candidatos) {
+  for (const seletor of candidatos ?? []) {
+    if ((await pagina.locator(seletor).count()) > 0) return seletor;
+  }
+  return null;
+}
+
+export async function consultar({ cliente, idCertidao, env = process.env }) {
+  const receita = RECEITAS[idCertidao];
+
+  if (!receita) {
+    return {
+      situacao: 'manual',
+      detalhe: `Sem receita de automação para "${idCertidao}". Use um provedor de API ou consulte no portal.`,
+    };
+  }
+
+  const impedimento = receita.impedimento?.(cliente);
+  if (impedimento) {
+    return { situacao: 'manual', detalhe: impedimento };
+  }
+
+  const browser = await abrirNavegador(env);
+  const contexto = await browser.newContext({
+    locale: 'pt-BR',
+    userAgent:
+      'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
+  });
+  const pagina = await contexto.newPage();
+  pagina.setDefaultTimeout(TEMPO_LIMITE);
+
+  try {
+    await pagina.goto(receita.url, { waitUntil: 'domcontentloaded' });
+
+    const captcha = await detectarCaptcha(pagina);
+    if (captcha) {
+      return {
+        situacao: 'manual',
+        detalhe: `${receita.nome} protegido por captcha (${captcha}) — não automatizável sem um provedor pago.`,
+      };
+    }
+
+    return await receita.executar({ pagina, cliente, primeiroSeletorPresente });
+  } catch (erro) {
+    return { situacao: 'erro', detalhe: `${receita.nome}: ${erro.message}` };
+  } finally {
+    await contexto.close().catch(() => {});
+  }
+}

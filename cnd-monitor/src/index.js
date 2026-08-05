@@ -46,7 +46,12 @@ cnd-monitor — consulta mensal de certidões da carteira de clientes
   const pastaSaida = resolve(RAIZ, args.saida ?? '.');
 
   const config = await carregarConfig(caminhoClientes);
-  if (args.provedor) config.provedorPadrao = args.provedor;
+  if (args.provedor) {
+    // Forcar um provedor na linha de comando vale para tudo: os overrides por
+    // certidao do arquivo nao podem sobreviver a um "--provedor web".
+    config.provedorPadrao = args.provedor;
+    config.provedores = {};
+  }
 
   const credenciais = credenciaisDoAmbiente(env);
 

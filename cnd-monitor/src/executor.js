@@ -73,15 +73,22 @@ export async function executar(config, credenciais, opcoes = {}) {
   }
 
   let concluidas = 0;
-  const resultados = await emLotes(tarefas, concorrencia, async (tarefa) => {
-    const resultado = await consultarUma(tarefa, config, credenciais, {
-      provedoresIndisponiveis,
-      env,
+  let resultados;
+  try {
+    resultados = await emLotes(tarefas, concorrencia, async (tarefa) => {
+      const resultado = await consultarUma(tarefa, config, credenciais, {
+        provedoresIndisponiveis,
+        env,
+      });
+      concluidas += 1;
+      aoProgredir?.({ concluidas, total: tarefas.length, resultado });
+      return resultado;
     });
-    concluidas += 1;
-    aoProgredir?.({ concluidas, total: tarefas.length, resultado });
-    return resultado;
-  });
+  } finally {
+    // Provedores com recurso pesado (o "web" mantem um Chromium aberto para a
+    // rodada inteira) precisam desligar mesmo se algo estourar no meio.
+    await encerrarProvedores(config, tarefas);
+  }
 
   return {
     geradoEm: new Date().toISOString(),
@@ -89,6 +96,23 @@ export async function executar(config, credenciais, opcoes = {}) {
     resultados,
     resumo: resumir(resultados),
   };
+}
+
+async function encerrarProvedores(config, tarefas) {
+  const usados = new Set(
+    tarefas
+      .filter((t) => !t.certidao.apenasManual)
+      .map((t) => provedorDe(config, t.idCertidao)),
+  );
+
+  for (const idProvedor of usados) {
+    try {
+      const provedor = obterProvedor(idProvedor);
+      if (provedor.encerrar) await provedor.encerrar();
+    } catch {
+      // Encerramento e best-effort: nao pode mascarar o resultado da rodada.
+    }
+  }
 }
 
 async function consultarUma(tarefa, config, credenciais, ctx) {

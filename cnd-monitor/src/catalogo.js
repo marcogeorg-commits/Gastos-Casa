@@ -16,7 +16,7 @@ export const CATALOGO = {
       'Certidão de Débitos relativos a Créditos Tributários Federais e à Dívida Ativa da União.',
     aceita: ['cnpj', 'cpf'],
     validadeDias: 180,
-    provedores: ['serpro', 'infosimples', 'mock'],
+    provedores: ['serpro', 'infosimples', 'web', 'mock'],
     urlManual:
       'https://servicos.receita.fazenda.gov.br/servicos/certidaointernet/pj/emitir',
   },
@@ -42,7 +42,7 @@ export const CATALOGO = {
     descricao: 'Certificado de Regularidade do FGTS.',
     aceita: ['cnpj', 'cpf'],
     validadeDias: 30,
-    provedores: ['infosimples', 'mock'],
+    provedores: ['infosimples', 'web', 'mock'],
     urlManual: 'https://consulta-crf.caixa.gov.br/consultacrf/pages/consultaEmpregador.jsf',
   },
 
@@ -52,7 +52,7 @@ export const CATALOGO = {
     descricao: 'Certidão Negativa de Débitos Trabalhistas.',
     aceita: ['cnpj', 'cpf'],
     validadeDias: 180,
-    provedores: ['infosimples', 'mock'],
+    provedores: ['infosimples', 'web', 'mock'],
     urlManual: 'https://cndt-certidao.tst.jus.br/inicio.faces',
   },
 
@@ -62,7 +62,7 @@ export const CATALOGO = {
     descricao: 'Certidão Negativa de Débitos Estaduais de Santa Catarina.',
     aceita: ['cnpj'],
     validadeDias: 90,
-    provedores: ['infosimples', 'mock'],
+    provedores: ['infosimples', 'web', 'mock'],
     urlManual: 'https://sat.sef.sc.gov.br/tax.net/Sat.CtaCte.Web/CertidaoSolicitar.aspx',
   },
 
@@ -72,7 +72,7 @@ export const CATALOGO = {
     descricao: 'Certidão Negativa de Tributos Municipais.',
     aceita: ['cnpj'],
     validadeDias: 90,
-    provedores: ['infosimples', 'mock'],
+    provedores: ['infosimples', 'web', 'mock'],
     exigeMunicipio: true,
     urlManual: null,
   },

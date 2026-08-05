@@ -37,6 +37,14 @@ jobs:
       - name: Testes
         run: npm test
 
+      # Só faz sentido para o provedor gratuito "web". Defina a variável de
+      # repositório CND_PROVEDOR=web para ativá-lo. Atenção: portais públicos
+      # às vezes bloqueiam IPs de datacenter — se isso acontecer, rode o "web"
+      # localmente e deixe o agendamento para um provedor de API.
+      - name: Navegador para automação própria
+        if: vars.CND_PROVEDOR == 'web'
+        run: npm install playwright && npx playwright install --with-deps chromium
+
       - name: Consultar certidões
         env:
           INFOSIMPLES_TOKEN: ${{ secrets.INFOSIMPLES_TOKEN }}
@@ -44,7 +52,7 @@ jobs:
           SERPRO_CONSUMER_KEY: ${{ secrets.SERPRO_CONSUMER_KEY }}
           SERPRO_CONSUMER_SECRET: ${{ secrets.SERPRO_CONSUMER_SECRET }}
           COMPETENCIA: ${{ inputs.competencia }}
-          PROVEDOR: ${{ inputs.provedor }}
+          PROVEDOR: ${{ inputs.provedor || vars.CND_PROVEDOR }}
         run: |
           args=()
           if [ -n "$COMPETENCIA" ]; then args+=(--competencia "$COMPETENCIA"); fi

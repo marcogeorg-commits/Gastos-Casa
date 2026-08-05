@@ -9,6 +9,10 @@
   },
   "scripts": {
     "consultar": "node src/index.js",
+    "calibrar": "node src/calibrar.js",
     "test": "node --test \"test/*.test.js\""
+  },
+  "optionalDependencies": {
+    "playwright": "^1.62.1"
   }
 }

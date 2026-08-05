@@ -1,0 +1,5 @@
+node_modules/
+
+# Inventário e capturas de tela geradas por `npm run calibrar` — insumo local
+# para ajustar os seletores, não artefato do projeto.
+calibracao/

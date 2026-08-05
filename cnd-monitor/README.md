@@ -3,7 +3,8 @@
 Consulta mensal das certidões da carteira de clientes (10–20 CNPJs/CPFs) e gera
 um relatório HTML visual com semáforo por cliente e por certidão.
 
-Roda sem dependências externas: Node 22, biblioteca padrão apenas.
+O núcleo roda sem dependências: Node 22 e biblioteca padrão. Só o provedor
+gratuito `web` acrescenta o Playwright, como dependência opcional.
 
 ```bash
 cd cnd-monitor
@@ -24,11 +25,11 @@ Saídas:
 
 | Certidão | Órgão | Fonte automatizável |
 |---|---|---|
-| CND Federal | Receita Federal / PGFN | **SERPRO (oficial)** ou Infosimples |
+| CND Federal | Receita Federal / PGFN | SERPRO (oficial), Infosimples ou **`web` (grátis)** |
 | CADIN Federal | PGFN / RFB (SISBACEN) | **não há API** — conferência manual (ver abaixo) |
-| CRF do FGTS | Caixa | Infosimples |
-| CNDT Trabalhista | TST | Infosimples |
-| CND Estadual SC | SEF/SC | Infosimples |
+| CRF do FGTS | Caixa | Infosimples ou `web` (provável captcha) |
+| CNDT Trabalhista | TST | Infosimples ou `web` (provável captcha) |
+| CND Estadual SC | SEF/SC | Infosimples ou `web` (provável captcha) |
 | CND Municipal | prefeitura sede | Infosimples (exige `municipio` no cadastro) |
 
 O catálogo fica em `src/catalogo.js`: acrescentar uma certidão é acrescentar uma
@@ -58,14 +59,65 @@ CADIN-RFB. O CADIN só agrega quando há débito de **outro** órgão federal.
 
 ## Provedores
 
-O provedor é escolhido no `clientes.json` e pode variar por certidão:
+São quatro: `web` (grátis, automação própria), `serpro` e `infosimples` (pagos,
+por consulta) e `mock` (simulado, sem rede). O provedor é escolhido no
+`clientes.json` e pode variar por certidão — dá para usar o `web` onde ele
+funciona e uma API só onde há captcha:
 
 ```json
 {
-  "provedorPadrao": "infosimples",
-  "provedores": { "rfb_pgfn": "serpro" }
+  "provedorPadrao": "web",
+  "provedores": { "cndt": "infosimples", "fgts_crf": "infosimples" }
 }
 ```
+
+`--provedor <id>` na linha de comando força um provedor para **todas** as
+certidões, ignorando os overrides do arquivo — útil para testar.
+
+### `web` — automação própria, sem custo por consulta
+
+Playwright dirigindo o portal público de cada órgão. Não tem credencial nem
+mensalidade: o que se paga é em fragilidade.
+
+```bash
+npm install playwright && npx playwright install chromium
+node src/index.js --provedor web
+```
+
+**O captcha é o limite real.** Ele está nesses portais exatamente para impedir
+automação, e o provedor não tenta contorná-lo: quando detecta um, a consulta
+volta como *conferência manual* com o motivo — nunca como um resultado
+inventado. Resolver captcha é boa parte do que se paga num provedor de API.
+
+| Certidão | Expectativa no `web` |
+|---|---|
+| CND Federal (PJ) | melhor candidato — consulta pública, só CNPJ |
+| CND Federal (PF) | recusada: a emissão pede data de nascimento, que não está no cadastro |
+| CRF do FGTS, CNDT, SEFAZ/SC | historicamente com captcha — a calibração confirma |
+
+Outras limitações honestas:
+
+- Os seletores em `src/receitas/index.js` **não foram verificados contra os
+  portais em produção** — o ambiente onde este código foi escrito não tem acesso
+  a eles. Calibre antes de confiar (abaixo).
+- Runners do GitHub Actions usam IPs de datacenter, que portais públicos às vezes
+  bloqueiam. Se o agendamento falhar por isso, rode o `web` na máquina do
+  escritório (ou num runner self-hosted) e deixe o Actions para o provedor de API.
+- Quando um seletor não casa ou a resposta não é reconhecível, o resultado é
+  `erro` com o texto encontrado — a rotina nunca chuta uma situação.
+
+#### Calibrar os seletores
+
+De uma máquina com acesso aos portais:
+
+```bash
+npm run calibrar -- rfb_pgfn          # lista campos, botões e captcha reais
+npm run calibrar -- cndt --headed     # abre o navegador para você acompanhar
+```
+
+O comando imprime os seletores que existem de fato, diz quais candidatos da
+receita casaram, e salva `calibracao/<certidao>.json` e `.png`. Com isso na mão,
+ajustar `src/receitas/index.js` é questão de minutos.
 
 ### `mock` — padrão, sem rede
 
@@ -156,10 +208,16 @@ consultas como falha e diz qual variável falta — a rodada continua.
 node src/index.js [opções]
 
   --clientes <arquivo>     padrão: clientes.json
-  --provedor <id>          sobrescreve o provedorPadrao
+  --provedor <id>          força este provedor em todas as certidões
   --competencia <AAAA-MM>  padrão: mês corrente
   --saida <pasta>          padrão: raiz do cnd-monitor
   --concorrencia <n>       consultas simultâneas (padrão 4)
+```
+
+Calibração de seletores do provedor `web`:
+
+```
+npm run calibrar -- <certidao> [--headed]
 ```
 
 Falhas de rede são retentadas 3 vezes com backoff exponencial antes de virarem

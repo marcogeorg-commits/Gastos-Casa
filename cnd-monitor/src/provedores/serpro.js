@@ -11,6 +11,8 @@
  * Cobre apenas a CND Federal: e o unico servico deste contrato.
  */
 
+import { interpretarTexto } from '../situacao.js';
+
 export const id = 'serpro';
 export const nome = 'SERPRO (Consulta CND)';
 
@@ -58,21 +60,9 @@ export function limparCacheDeToken() {
 }
 
 export function interpretarSituacao(payload) {
-  const semAcento = (v) =>
-    String(v ?? '')
-      .normalize('NFD')
-      .replace(/\p{Diacritic}/gu, '')
-      .toLowerCase();
-  const texto = `${semAcento(payload?.tipoCertidao ?? payload?.tipo)} ${semAcento(
-    payload?.situacao ?? payload?.status,
-  )}`;
-
-  if (texto.includes('positiva com efeito') || texto.includes('efeito de negativa')) {
-    return 'positiva_com_efeito_negativo';
-  }
-  if (texto.includes('negativa')) return 'negativa';
-  if (texto.includes('positiva') || texto.includes('pendencia')) return 'positiva';
-  return null;
+  const tipo = payload?.tipoCertidao ?? payload?.tipo ?? '';
+  const situacao = payload?.situacao ?? payload?.status ?? '';
+  return interpretarTexto(`${tipo} ${situacao}`);
 }
 
 export async function consultar({ cliente, idCertidao, credenciais, env = process.env }) {

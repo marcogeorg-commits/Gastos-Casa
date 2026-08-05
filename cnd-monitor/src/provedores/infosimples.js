@@ -12,6 +12,8 @@
  * (JSON no formato {"cndt": "tst/cndt"}).
  */
 
+import { interpretarTexto } from '../situacao.js';
+
 export const id = 'infosimples';
 export const nome = 'Infosimples';
 
@@ -42,29 +44,8 @@ export function resolverEndpoint(idCertidao, env = process.env) {
   return ENDPOINTS[idCertidao]?.caminho ?? null;
 }
 
-/**
- * Traduz o texto da certidao para uma das situacoes normalizadas. Cada orgao
- * escreve de um jeito, entao o casamento e por palavra-chave, do caso mais
- * especifico para o mais generico.
- */
-export function interpretarSituacao(texto) {
-  // Sem acentos: os orgaos alternam entre "pendência" e "pendencia".
-  const t = String(texto ?? '')
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase();
-  if (!t) return null;
-  if (t.includes('positiva com efeito') || t.includes('efeito de negativa')) {
-    return 'positiva_com_efeito_negativo';
-  }
-  if (t.includes('negativa') || t.includes('regular') || t.includes('nada consta')) {
-    return 'negativa';
-  }
-  if (t.includes('positiva') || t.includes('irregular') || t.includes('pendencia')) {
-    return 'positiva';
-  }
-  return null;
-}
+/** Ver `src/situacao.js` -- a regra e a mesma para todos os provedores. */
+export const interpretarSituacao = interpretarTexto;
 
 function primeiro(dados, ...chaves) {
   for (const item of dados ?? []) {
