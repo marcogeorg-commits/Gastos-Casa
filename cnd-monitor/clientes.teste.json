@@ -1,10 +1,11 @@
 {
-  "_leiame": "Cadastro mínimo para o primeiro teste do provedor gratuito contra o portal real. Um cliente, uma certidão — o suficiente para saber se o hCaptcha invisível deixa a automação passar.",
+  "_leiame": "Cadastro mínimo para testar o provedor gratuito contra o portal real. Poucos clientes, uma certidão — o suficiente para ver a rotina de ponta a ponta sem mexer no cadastro de produção.",
 
   "provedorPadrao": "web",
   "certidoes": ["rfb_pgfn"],
 
   "clientes": [
-    { "nome": "Teste — CND Federal", "documento": "13.248.384/0001-08" }
+    { "nome": "Teste A — CND Federal", "documento": "07.442.711/0001-65" },
+    { "nome": "Teste B — CND Federal", "documento": "13.248.384/0001-08", "ativo": false }
   ]
 }

@@ -5,7 +5,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { interpretarTexto } from '../src/situacao.js';
-import { detectarCaptcha, esperarSeletor, primeiroSeletorPresente } from '../src/provedores/web.js';
+import {
+  detectarCaptcha,
+  esperarSeletor,
+  primeiroSeletorPresente,
+  primeiroVisivel,
+} from '../src/provedores/web.js';
 import { receitaFormulario } from '../src/receitas/index.js';
 
 test('irregular nao pode ser lido como negativa', () => {
@@ -734,5 +739,120 @@ describe('espera do desfecho', async () => {
 
     assert.equal(avisos.length, 1, 'avisa antes de esperar, não depois de terminar');
     assert.match(avisos[0], /tentativa 1\/2/);
+  });
+});
+
+describe('certidão já existente', async () => {
+  let navegador;
+  let pagina;
+
+  before(async () => {
+    try {
+      const { chromium } = await import('playwright');
+      navegador = await chromium.launch({
+        ...(process.env.PLAYWRIGHT_EXECUTABLE_PATH
+          ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH }
+          : {}),
+        args: ['--no-sandbox'],
+      });
+      pagina = await navegador.newPage();
+    } catch {
+      navegador = null;
+    }
+  });
+
+  after(async () => {
+    await navegador?.close().catch(() => {});
+  });
+
+  const receitaRFB = (tentativas = 1) =>
+    receitaFormulario({
+      id: 'fixture',
+      nome: 'Portal de teste',
+      url: 'about:blank',
+      tentativasPortal: tentativas,
+      sinaisResultado: ['#saida', '[role="dialog"]'],
+      desviosAposEnvio: [
+        {
+          descricao: 'já existe válida — emitir nova',
+          quando: ['[role="dialog"]:has-text("Certidão Válida")'],
+          clicar: ['[role="dialog"] button:has-text("Emitir Nova Certidão")'],
+        },
+      ],
+      seletores: {
+        campoDocumento: ['#NI'],
+        botaoEnviar: ['button:has-text("Emitir Certidão")'],
+        botaoConsulta: ['button:has-text("Consultar Certidão")'],
+        alvoResultado: ['#saida'],
+      },
+    });
+
+  const executar = (receita) =>
+    receita.executar({
+      pagina,
+      cliente: { documento: '11222333000181', tipo: 'cnpj' },
+      primeiroSeletorPresente,
+      primeiroVisivel,
+      esperarSeletor,
+      dormir: async () => {},
+    });
+
+  /**
+   * O portal avisa que já existe certidão válida e oferece consultá-la. Aceitar
+   * a oferta devolveria um dado possivelmente de semanas atrás: débito que
+   * entrou depois não estaria lá, e o monitoramento diria "tudo certo" sobre
+   * quem acabou de virar devedor.
+   */
+  test('diante de certidão válida existente, emite uma nova', async (t) => {
+    if (!navegador) return t.skip('Playwright/Chromium indisponível');
+
+    await pagina.setContent(`
+      <input id="NI">
+      <button onclick="document.getElementById('dlg').hidden=false">Emitir Certidão</button>
+      <button onclick="mostrar('Positiva com efeitos de negativa — certidão ANTIGA')">Consultar Certidão</button>
+      <div id="dlg" role="dialog" hidden>
+        Certidão Válida Encontrada
+        <button onclick="mostrar('Certidão Negativa de Débitos. Válida até 01/02/2027.')">Emitir Nova Certidão</button>
+      </div>
+      <div id="saida"></div>
+      <script>
+        function mostrar(txt) {
+          document.getElementById('dlg').hidden = true;
+          document.getElementById('saida').textContent = txt;
+        }
+      </script>`);
+
+    const resultado = await executar(receitaRFB());
+
+    assert.equal(resultado.situacao, 'negativa', 'leu a certidão nova, não a antiga');
+    assert.doesNotMatch(resultado.detalhe, /ANTIGA/);
+    assert.equal(resultado.validaAte, '01/02/2027');
+  });
+
+  test('emissão bloqueada cai na última válida, dizendo que o dado não é de agora', async (t) => {
+    if (!navegador) return t.skip('Playwright/Chromium indisponível');
+
+    await pagina.setContent(`
+      <input id="NI">
+      <button onclick="mostrar('Não foi possível concluir a ação. Por favor, tente novamente dentro de alguns minutos. 023')">Emitir Certidão</button>
+      <button onclick="mostrar('A1C4.C1EB.6886.3120 Positiva com efeitos de negativa 05/08/2026 01/02/2027 Válida')">Consultar Certidão</button>
+      <div id="saida"></div>
+      <script>
+        function mostrar(txt) { document.getElementById('saida').textContent = txt; }
+        // A recarga do último recurso perde o conteúdo montado por setContent,
+        // então o teste o restaura para simular a página servida de verdade.
+        window.addEventListener('beforeunload', () => {});
+      </script>`);
+
+    // Sem recarga real: a página fica como está entre as passadas.
+    pagina.reload = async () => {};
+
+    const resultado = await executar(receitaRFB(1));
+
+    assert.equal(resultado.situacao, 'positiva_com_efeito_negativo');
+    assert.equal(resultado.reaproveitada, true);
+    assert.match(resultado.detalhe, /não é|Não foi possível emitir/i);
+    assert.equal(resultado.numeroCertidao, 'A1C4.C1EB.6886.3120');
+    assert.equal(resultado.validaAte, '01/02/2027');
   });
 });

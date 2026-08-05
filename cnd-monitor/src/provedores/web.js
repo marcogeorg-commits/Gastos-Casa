@@ -128,6 +128,20 @@ export async function primeiroSeletorPresente(pagina, candidatos) {
 }
 
 /**
+ * Primeiro candidato **visivel** na tela.
+ *
+ * `primeiroSeletorPresente` conta elementos ocultos, e componentes de modal
+ * costumam existir no DOM o tempo todo, escondidos. Para decidir "tem um dialogo
+ * na frente do usuario?" so serve o que esta de fato visivel.
+ */
+export async function primeiroVisivel(pagina, candidatos) {
+  for (const seletor of candidatos ?? []) {
+    if (await pagina.locator(seletor).first().isVisible().catch(() => false)) return seletor;
+  }
+  return null;
+}
+
+/**
  * Versao que espera o elemento aparecer, em vez de olhar uma vez so.
  *
  * O portal da Receita e um SPA com rotas em hash: quando o `goto` retorna, o
@@ -246,6 +260,7 @@ export async function consultar({ cliente, idCertidao, env = process.env }) {
         pagina,
         cliente,
         primeiroSeletorPresente,
+        primeiroVisivel,
         esperarSeletor,
         env,
         // Progresso vai para stderr: a saída normal é o resultado da consulta.

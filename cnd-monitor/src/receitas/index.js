@@ -18,6 +18,30 @@ import { interpretarTexto } from '../situacao.js';
 
 const REGEX_VALIDADE = /v[áa]lida?\s+at[ée]\s+(\d{2}\/\d{2}\/\d{4})/i;
 const REGEX_CONTROLE = /c[óo]digo\s+de\s+controle[:\s]+([A-Z0-9.\-]{6,})/i;
+// Formato do código de controle da Receita: quatro grupos de 4, separados por
+// ponto. Na tela de consulta ele vem numa tabela, sem o rótulo ao lado.
+const REGEX_CONTROLE_RFB = /\b([0-9A-F]{4}\.[0-9A-F]{4}\.[0-9A-F]{4}\.[0-9A-F]{4})\b/;
+const REGEX_DATA = /\b(\d{2})\/(\d{2})\/(\d{4})\b/g;
+
+/**
+ * Validade da certidao.
+ *
+ * Na tela de emissao vem escrito "válida até <data>". Na tela de consulta vem
+ * numa tabela, junto com datas de emissao -- e ali a maior data e a validade,
+ * porque emissao e sempre passado e validade sempre futuro.
+ */
+export function extrairValidade(texto) {
+  const explicita = texto.match(REGEX_VALIDADE)?.[1];
+  if (explicita) return explicita;
+
+  const datas = [...texto.matchAll(REGEX_DATA)].map(([bruta, d, m, a]) => ({
+    bruta,
+    ordenavel: `${a}${m}${d}`,
+  }));
+  if (datas.length === 0) return null;
+
+  return datas.sort((x, y) => y.ordenavel.localeCompare(x.ordenavel))[0].bruta;
+}
 
 /**
  * Runner comum: abre o formulário, informa o documento, envia e lê o resultado.
@@ -67,11 +91,53 @@ export function receitaFormulario(config) {
         await pagina.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
       }
 
-      if (resultado.situacao === 'indisponivel' && tentativas > 1) {
+      if (resultado.situacao !== 'indisponivel') return resultado;
+
+      if (tentativas > 1) {
         resultado.detalhe = `${resultado.detalhe} (após ${tentativas} tentativas)`;
       }
-      return resultado;
+
+      // Emissão bloqueada. Ler a última certidão válida é melhor que devolver
+      // só "indisponível" -- desde que fique explícito que o dado não é de
+      // agora, senão vira exatamente a mentira que se queria evitar.
+      const anterior = await consultarUltimaValida(config, argumentos, avisar);
+      return anterior ?? resultado;
     },
+  };
+}
+
+/**
+ * Ultimo recurso: le a certidao valida ja emitida, sem tentar emitir outra.
+ *
+ * Devolve `null` quando nao ha o que aproveitar, para o chamador manter o
+ * "indisponivel" original.
+ */
+async function consultarUltimaValida(config, argumentos, avisar) {
+  const seletores = config.seletores ?? {};
+  // Aceita nos dois lugares: o botão é um seletor, mas ler só da raiz deixava o
+  // recurso final silenciosamente desligado.
+  const botaoConsulta = config.botaoConsulta ?? seletores.botaoConsulta;
+  if (!botaoConsulta) return null;
+
+  avisar(`      ${config.nome}: emissão bloqueada, lendo a última certidão válida`);
+  await argumentos.pagina.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+
+  const comConsulta = {
+    ...config,
+    desviosAposEnvio: [],
+    seletores: { ...seletores, botaoEnviar: botaoConsulta },
+  };
+  const resultado = await umaTentativa(comConsulta, argumentos);
+
+  if (resultado.situacao === 'erro' || resultado.situacao === 'indisponivel') return null;
+
+  return {
+    ...resultado,
+    reaproveitada: true,
+    detalhe:
+      `Não foi possível emitir certidão nova; dado da última certidão válida${
+        resultado.validaAte ? `, com validade até ${resultado.validaAte}` : ''
+      }. ${resultado.detalhe}`,
   };
 }
 
@@ -129,7 +195,10 @@ async function esperarDesfecho(pagina, config, tempoLimite = 45_000) {
 }
 
 /** Uma passada pelo formulário: preenche, envia e lê o que voltou. */
-async function umaTentativa(config, { pagina, cliente, primeiroSeletorPresente, esperarSeletor }) {
+async function umaTentativa(
+  config,
+  { pagina, cliente, primeiroSeletorPresente, primeiroVisivel, esperarSeletor },
+) {
   // Sem `esperarSeletor` (chamada direta em teste) cai na sondagem simples.
   const esperar = esperarSeletor ?? primeiroSeletorPresente;
   const { campoDocumento, campoNascimento, botaoEnviar, alvoResultado } = config.seletores;
@@ -177,6 +246,23 @@ async function umaTentativa(config, { pagina, cliente, primeiroSeletorPresente, 
 
   await pagina.click(botao);
   await esperarDesfecho(pagina, config);
+
+  // Depois de enviar, o portal pode abrir um diálogo em vez de responder. Na
+  // Receita ele avisa que já existe certidão válida e oferece consultá-la ou
+  // emitir outra. A rotina emite outra: a certidão guardada pode ser de semanas
+  // atrás, e débito que entrou depois não apareceria nela — um monitoramento
+  // que repete o dado velho diz "tudo certo" sobre quem acabou de mudar.
+  for (const desvio of config.desviosAposEnvio ?? []) {
+    const gatilho = await primeiroVisivel(pagina, desvio.quando);
+    if (!gatilho) continue;
+
+    const acao = await primeiroVisivel(pagina, desvio.clicar);
+    if (!acao) continue;
+
+    await pagina.click(acao, { timeout: 5000 }).catch(() => {});
+    await esperarDesfecho(pagina, config);
+  }
+
   await pagina.waitForLoadState('networkidle').catch(() => {});
 
   const limpo = await textoDoResultado(pagina, alvoResultado, esperar);
@@ -195,8 +281,8 @@ async function umaTentativa(config, { pagina, cliente, primeiroSeletorPresente, 
   return {
     situacao,
     detalhe: limpo.slice(0, 240),
-    numeroCertidao: limpo.match(REGEX_CONTROLE)?.[1] ?? null,
-    validaAte: limpo.match(REGEX_VALIDADE)?.[1] ?? null,
+    numeroCertidao: limpo.match(REGEX_CONTROLE)?.[1] ?? limpo.match(REGEX_CONTROLE_RFB)?.[1] ?? null,
+    validaAte: extrairValidade(limpo),
   };
 }
 
@@ -222,7 +308,27 @@ export const RECEITAS = {
     urlResultado: /#\/home\/(cnpj|cpf|cib|cno)\/resultado/,
     // Só os específicos: `main` e `body` sempre têm texto e encerrariam a
     // espera antes de a resposta chegar.
-    sinaisResultado: ['br-alert-messages', '.br-message', 'app-resultado'],
+    sinaisResultado: [
+      'br-alert-messages',
+      '.br-message',
+      'app-resultado',
+      '[role="dialog"]',
+      '.br-modal',
+      'table',
+    ],
+    desviosAposEnvio: [
+      {
+        descricao: 'já existe certidão válida — emitir uma nova mesmo assim',
+        quando: [
+          '[role="dialog"]:has-text("Certidão Válida")',
+          '.br-modal:has-text("Certidão Válida")',
+        ],
+        clicar: [
+          '[role="dialog"] button:has-text("Emitir Nova Certidão")',
+          'button:has-text("Emitir Nova Certidão")',
+        ],
+      },
+    ],
     preparacao: [
       { descricao: 'aceitar cookies', candidatos: ['br-cookie-bar button:has-text("Aceitar")'] },
       { descricao: 'fechar aviso de mudança de NI', candidatos: ['modal-mudanca-ni button'] },
@@ -245,14 +351,21 @@ export const RECEITAS = {
       ],
       // Os botões não têm id; o texto é a única âncora estável. "Emitir" gera a
       // certidão do momento, que é o que a rotina precisa.
-      botaoEnviar: [
-        'button:has-text("Emitir Certidão")',
-        'button:has-text("Consultar Certidão")',
-      ],
+      botaoEnviar: ['button:has-text("Emitir Certidão")'],
+      // Último recurso quando a emissão não passa: lê a última certidão válida
+      // já emitida, deixando claro no relatório que o dado não é do momento.
+      botaoConsulta: ['button:has-text("Consultar Certidão")'],
       // O portal responde de dois jeitos: resultado dentro do conteúdo, ou
       // alerta no topo da página (é onde aparece o erro 023). O alerta vem
       // primeiro porque, quando existe, ele é o desfecho.
-      alvoResultado: ['br-alert-messages', '.br-message', 'app-resultado', 'main', 'body'],
+      alvoResultado: [
+        'br-alert-messages',
+        '.br-message',
+        'app-resultado',
+        'table',
+        'main',
+        'body',
+      ],
     },
   }),
 
