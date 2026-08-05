@@ -149,7 +149,7 @@ async function consultarUltimaValida(config, argumentos, avisar) {
  * pagina. Ler o primeiro que casa e aceitar string vazia produzia
  * "resposta nao reconhecida" com a mensagem bem visivel na tela.
  */
-async function textoDoResultado(pagina, candidatos, esperar) {
+async function textoDoResultado(pagina, candidatos, esperar, ruidos = []) {
   const lista = candidatos ?? [];
   if (lista.length === 0) return '';
 
@@ -163,7 +163,14 @@ async function textoDoResultado(pagina, candidatos, esperar) {
     const texto = ((await alvo.textContent().catch(() => '')) ?? '')
       .replace(/\s+/g, ' ')
       .trim();
-    if (texto) return texto;
+    if (!texto) continue;
+
+    // Menu, busca e painel de cookies tem texto de sobra e nao dizem nada sobre
+    // a certidao. Ler isso produzia "resposta nao reconhecida" com o conteudo
+    // do site inteiro no lugar do desfecho.
+    if (ruidos.some((padrao) => padrao.test(texto))) continue;
+
+    return texto;
   }
   return '';
 }
@@ -201,13 +208,27 @@ async function umaTentativa(
 ) {
   // Sem `esperarSeletor` (chamada direta em teste) cai na sondagem simples.
   const esperar = esperarSeletor ?? primeiroSeletorPresente;
+  // Sem `primeiroVisivel`, aproxima com o primeiro presente: pior, mas melhor
+  // que estourar por causa de um argumento ausente.
+  const visivel =
+    primeiroVisivel ??
+    (async (p, candidatos) => {
+      const seletor = await primeiroSeletorPresente(p, candidatos);
+      return seletor ? p.locator(seletor).first() : null;
+    });
   const { campoDocumento, campoNascimento, botaoEnviar, alvoResultado } = config.seletores;
 
   // Barras de cookie e modais de aviso cobrem o formulário e engolem o
   // clique. Cada passo é opcional: se não estiver na tela, segue adiante.
   for (const passo of config.preparacao ?? []) {
-    const alvo = await primeiroSeletorPresente(pagina, passo.candidatos);
-    if (alvo) await pagina.click(alvo, { timeout: 5000 }).catch(() => {});
+    // Só o que está visível: componentes de aviso ficam no DOM o tempo todo,
+    // escondidos, e clicar no invisível não tira nada da frente.
+    const alvo = await visivel(pagina, passo.candidatos);
+    if (!alvo) continue;
+
+    await alvo.click({ timeout: 5000 }).catch(() => {});
+    // Esperar sumir evita seguir com o diálogo ainda cobrindo o formulário.
+    await alvo.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
   }
 
   const campo = await esperar(pagina, campoDocumento);
@@ -253,19 +274,19 @@ async function umaTentativa(
   // atrás, e débito que entrou depois não apareceria nela — um monitoramento
   // que repete o dado velho diz "tudo certo" sobre quem acabou de mudar.
   for (const desvio of config.desviosAposEnvio ?? []) {
-    const gatilho = await primeiroVisivel(pagina, desvio.quando);
+    const gatilho = await visivel(pagina, desvio.quando);
     if (!gatilho) continue;
 
-    const acao = await primeiroVisivel(pagina, desvio.clicar);
+    const acao = await visivel(pagina, desvio.clicar);
     if (!acao) continue;
 
-    await pagina.click(acao, { timeout: 5000 }).catch(() => {});
+    await acao.click({ timeout: 5000 }).catch(() => {});
     await esperarDesfecho(pagina, config);
   }
 
   await pagina.waitForLoadState('networkidle').catch(() => {});
 
-  const limpo = await textoDoResultado(pagina, alvoResultado, esperar);
+  const limpo = await textoDoResultado(pagina, alvoResultado, esperar, config.ruidos);
   if (!limpo) {
     return {
       situacao: 'erro',
@@ -330,9 +351,22 @@ export const RECEITAS = {
       },
     ],
     preparacao: [
-      { descricao: 'aceitar cookies', candidatos: ['br-cookie-bar button:has-text("Aceitar")'] },
+      {
+        descricao: 'aceitar cookies',
+        // O botão não tem id e o container varia entre a barra e o painel de
+        // configurações avançadas; o texto é a âncora que sobra.
+        candidatos: [
+          'br-cookie-bar button:has-text("Aceitar")',
+          'button:has-text("Aceitar todos")',
+          'button:has-text("Aceitar Todos")',
+          'button:has-text("Aceitar")',
+        ],
+      },
       { descricao: 'fechar aviso de mudança de NI', candidatos: ['modal-mudanca-ni button'] },
     ],
+    // `body` fica de fora de propósito: sem ele, container vazio vira erro
+    // explícito, e não uma varredura do site inteiro apresentada como resposta.
+    ruidos: [/configura[çc][õo]es avan[çc]adas de cookies/i, /texto da pesquisa/i],
     seletores: {
       // Calibrado no portal: o campo tem id gerado a cada render
       // (#id3f7317eeae4b2c), então o id não serve de âncora. O placeholder é o
@@ -358,14 +392,7 @@ export const RECEITAS = {
       // O portal responde de dois jeitos: resultado dentro do conteúdo, ou
       // alerta no topo da página (é onde aparece o erro 023). O alerta vem
       // primeiro porque, quando existe, ele é o desfecho.
-      alvoResultado: [
-        'br-alert-messages',
-        '.br-message',
-        'app-resultado',
-        'table',
-        'main',
-        'body',
-      ],
+      alvoResultado: ['br-alert-messages', '.br-message', 'app-resultado', 'table', 'main'],
     },
   }),
 

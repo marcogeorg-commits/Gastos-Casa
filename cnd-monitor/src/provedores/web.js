@@ -128,15 +128,27 @@ export async function primeiroSeletorPresente(pagina, candidatos) {
 }
 
 /**
- * Primeiro candidato **visivel** na tela.
+ * Primeiro elemento **visivel** entre os candidatos. Devolve o locator, nao o
+ * seletor.
  *
- * `primeiroSeletorPresente` conta elementos ocultos, e componentes de modal
- * costumam existir no DOM o tempo todo, escondidos. Para decidir "tem um dialogo
- * na frente do usuario?" so serve o que esta de fato visivel.
+ * `primeiroSeletorPresente` conta elementos ocultos, e componentes de aviso
+ * costumam existir no DOM o tempo todo, escondidos. Para decidir "tem um
+ * dialogo na frente do usuario?" so serve o que esta de fato visivel.
+ *
+ * Varre todos os elementos de cada seletor, e nao so o primeiro: um mesmo texto
+ * de botao aparece no painel escondido e na barra visivel, e olhar so o
+ * primeiro faria desistir do que estava a vista. Devolver o locator preserva
+ * qual deles: reconstruir pelo seletor traria de volta o oculto.
  */
 export async function primeiroVisivel(pagina, candidatos) {
   for (const seletor of candidatos ?? []) {
-    if (await pagina.locator(seletor).first().isVisible().catch(() => false)) return seletor;
+    const alvos = pagina.locator(seletor);
+    const quantos = await alvos.count();
+
+    for (let i = 0; i < Math.min(quantos, 10); i += 1) {
+      const alvo = alvos.nth(i);
+      if (await alvo.isVisible().catch(() => false)) return alvo;
+    }
   }
   return null;
 }

@@ -856,3 +856,111 @@ describe('certidão já existente', async () => {
     assert.equal(resultado.validaAte, '01/02/2027');
   });
 });
+
+describe('ruído da página', async () => {
+  let navegador;
+  let pagina;
+
+  before(async () => {
+    try {
+      const { chromium } = await import('playwright');
+      navegador = await chromium.launch({
+        ...(process.env.PLAYWRIGHT_EXECUTABLE_PATH
+          ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH }
+          : {}),
+        args: ['--no-sandbox'],
+      });
+      pagina = await navegador.newPage();
+    } catch {
+      navegador = null;
+    }
+  });
+
+  after(async () => {
+    await navegador?.close().catch(() => {});
+  });
+
+  /**
+   * Foi o que aconteceu numa consulta real: o painel de cookies ficou aberto,
+   * os containers de resultado ficaram vazios e a leitura caiu no corpo da
+   * página. O relatório trouxe o menu do site como se fosse a resposta.
+   */
+  test('menu e painel de cookies não passam por resultado', async (t) => {
+    if (!navegador) return t.skip('Playwright/Chromium indisponível');
+
+    const receita = receitaFormulario({
+      id: 'fixture',
+      nome: 'Portal de teste',
+      url: 'about:blank',
+      tentativasPortal: 1,
+      ruidos: [/configurações avançadas de cookies/i, /texto da pesquisa/i],
+      seletores: {
+        campoDocumento: ['#NI'],
+        botaoEnviar: ['#ir'],
+        alvoResultado: ['app-resultado', 'main'],
+      },
+    });
+
+    await pagina.setContent(`
+      <input id="NI"><button id="ir"></button>
+      <app-resultado></app-resultado>
+      <main>Funcionalidades do Sistema Ajuda Cookies Contraste Texto da pesquisa
+            Configurações avançadas de cookies Última atualização: 30/07/2024</main>`);
+
+    const resultado = await receita.executar({
+      pagina,
+      cliente: { documento: '11222333000181', tipo: 'cnpj' },
+      primeiroSeletorPresente,
+      primeiroVisivel,
+      esperarSeletor,
+      dormir: async () => {},
+    });
+
+    assert.equal(resultado.situacao, 'erro');
+    assert.match(resultado.detalhe, /não trouxe texto/);
+    assert.doesNotMatch(resultado.detalhe, /Cookies/i, 'o menu não pode virar o desfecho');
+  });
+
+  test('a preparação só clica no que está visível e espera sumir', async (t) => {
+    if (!navegador) return t.skip('Playwright/Chromium indisponível');
+
+    const receita = receitaFormulario({
+      id: 'fixture',
+      nome: 'Portal de teste',
+      url: 'about:blank',
+      tentativasPortal: 1,
+      preparacao: [
+        {
+          descricao: 'cookies',
+          candidatos: ['#oculto button', 'button:has-text("Aceitar")'],
+        },
+      ],
+      seletores: {
+        campoDocumento: ['#NI'],
+        botaoEnviar: ['#ir'],
+        alvoResultado: ['#saida'],
+      },
+    });
+
+    // O primeiro candidato existe no DOM mas está escondido: clicar nele não
+    // tiraria nada da frente, e a barra visível continuaria cobrindo o form.
+    await pagina.setContent(`
+      <div id="oculto" style="display:none"><button>Aceitar</button></div>
+      <div id="barra"><button onclick="this.parentElement.remove()">Aceitar</button></div>
+      <input id="NI">
+      <button id="ir" onclick="document.getElementById('saida').textContent='Certidão Negativa'"></button>
+      <div id="saida"></div>`);
+
+    const resultado = await receita.executar({
+      pagina,
+      cliente: { documento: '11222333000181', tipo: 'cnpj' },
+      primeiroSeletorPresente,
+      primeiroVisivel,
+      esperarSeletor,
+      dormir: async () => {},
+    });
+
+    assert.equal(await pagina.locator('#barra').count(), 0, 'a barra visível foi aceita');
+    assert.equal(resultado.situacao, 'negativa');
+  });
+});
