@@ -1,5 +1,5 @@
 node_modules/
 
-# Inventário e capturas de tela geradas por `npm run calibrar` — insumo local
-# para ajustar os seletores, não artefato do projeto.
-calibracao/
+# `calibracao/` NAO entra aqui de proposito: o inventario e a captura de tela
+# gerados por `npm run calibrar` sao feitos para serem commitados e revisados,
+# e sao o insumo para ajustar os seletores em src/receitas/.

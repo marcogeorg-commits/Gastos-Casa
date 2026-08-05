@@ -108,16 +108,27 @@ Outras limitações honestas:
 
 #### Calibrar os seletores
 
-De uma máquina com acesso aos portais:
+De uma máquina com acesso aos portais (a sua; nem o ambiente do agente nem os
+runners do Actions alcançam esses sites):
 
 ```bash
+git checkout claude/superpowers-k6v3zw
+cd cnd-monitor
+npm run preparar-web                  # instala Playwright + Chromium (uma vez)
+
 npm run calibrar -- rfb_pgfn          # lista campos, botões e captcha reais
 npm run calibrar -- cndt --headed     # abre o navegador para você acompanhar
 ```
 
 O comando imprime os seletores que existem de fato, diz quais candidatos da
-receita casaram, e salva `calibracao/<certidao>.json` e `.png`. Com isso na mão,
-ajustar `src/receitas/index.js` é questão de minutos.
+receita casaram, e salva `calibracao/<certidao>.json` e `.png`.
+
+Esses arquivos **são versionados de propósito** — commite e envie para que os
+seletores possam ser ajustados a partir do que o portal realmente tem:
+
+```bash
+git add calibracao && git commit -m "Calibração dos portais" && git push
+```
 
 ### `mock` — padrão, sem rede
 
