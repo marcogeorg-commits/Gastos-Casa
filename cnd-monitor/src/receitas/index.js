@@ -42,7 +42,8 @@ export function receitaFormulario(config) {
     },
 
     async executar(argumentos) {
-      const { pagina, dormir, env = {} } = argumentos;
+      const { pagina, dormir, registrar, env = {} } = argumentos;
+      const avisar = registrar ?? (() => {});
 
       // O portal responde "tente novamente dentro de alguns minutos" (erro 023)
       // em falhas passageiras. Desistir na primeira faria uma empresa regular
@@ -57,6 +58,11 @@ export function receitaFormulario(config) {
 
         if (resultado.situacao !== 'indisponivel' || tentativa === tentativas) break;
 
+        // Minutos de silêncio parecem travamento. Dizer o que está havendo é o
+        // que separa "esperando o portal" de "programa pendurado".
+        avisar(
+          `      ${config.nome}: portal indisponível (tentativa ${tentativa}/${tentativas}), aguardando ${Math.round(espera / 1000)}s`,
+        );
         await aguardar(espera);
         await pagina.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
       }
@@ -94,6 +100,32 @@ async function textoDoResultado(pagina, candidatos, esperar) {
     if (texto) return texto;
   }
   return '';
+}
+
+/**
+ * Espera o desfecho: a rota mudar para a tela de resultado **ou** um dos sinais
+ * ganhar texto.
+ *
+ * Esperar so pela rota custava 45s toda vez que o portal respondia com alerta
+ * em vez de navegar -- que e justamente o caso de erro, o mais frequente numa
+ * hora ruim. Tres tentativas assim viravam minutos de silencio.
+ */
+async function esperarDesfecho(pagina, config, tempoLimite = 45_000) {
+  const sinais = config.sinaisResultado ?? [];
+  if (!config.urlResultado && sinais.length === 0) return;
+
+  await pagina
+    .waitForFunction(
+      ({ seletores, padraoUrl }) => {
+        if (padraoUrl && new RegExp(padraoUrl).test(location.href)) return true;
+        return seletores.some(
+          (s) => (document.querySelector(s)?.textContent ?? '').trim().length > 0,
+        );
+      },
+      { seletores: sinais, padraoUrl: config.urlResultado?.source ?? null },
+      { timeout: tempoLimite },
+    )
+    .catch(() => {});
 }
 
 /** Uma passada pelo formulário: preenche, envia e lê o que voltou. */
@@ -144,12 +176,7 @@ async function umaTentativa(config, { pagina, cliente, primeiroSeletorPresente, 
   }
 
   await pagina.click(botao);
-
-  // Num SPA nao ha navegacao: o sinal confiavel de que a consulta terminou e a
-  // rota mudar para a tela de resultado.
-  if (config.urlResultado) {
-    await pagina.waitForURL(config.urlResultado, { timeout: 45_000 }).catch(() => {});
-  }
+  await esperarDesfecho(pagina, config);
   await pagina.waitForLoadState('networkidle').catch(() => {});
 
   const limpo = await textoDoResultado(pagina, alvoResultado, esperar);
@@ -193,6 +220,9 @@ export const RECEITAS = {
     formatoDocumento: 'formatado',
     // Confirmado no portal: a emissão leva a #/home/<tipo>/resultado.
     urlResultado: /#\/home\/(cnpj|cpf|cib|cno)\/resultado/,
+    // Só os específicos: `main` e `body` sempre têm texto e encerrariam a
+    // espera antes de a resposta chegar.
+    sinaisResultado: ['br-alert-messages', '.br-message', 'app-resultado'],
     preparacao: [
       { descricao: 'aceitar cookies', candidatos: ['br-cookie-bar button:has-text("Aceitar")'] },
       { descricao: 'fechar aviso de mudança de NI', candidatos: ['modal-mudanca-ni button'] },

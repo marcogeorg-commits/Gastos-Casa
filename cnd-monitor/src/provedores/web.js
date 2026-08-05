@@ -248,6 +248,8 @@ export async function consultar({ cliente, idCertidao, env = process.env }) {
         primeiroSeletorPresente,
         esperarSeletor,
         env,
+        // Progresso vai para stderr: a saída normal é o resultado da consulta.
+        registrar: (mensagem) => console.error(mensagem),
       });
 
       // Captcha invisivel nao impede a tentativa, mas explica um fracasso: sem

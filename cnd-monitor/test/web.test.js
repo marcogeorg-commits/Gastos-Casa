@@ -634,3 +634,105 @@ describe('leitura do desfecho', async () => {
     );
   });
 });
+
+describe('espera do desfecho', async () => {
+  let navegador;
+  let pagina;
+
+  before(async () => {
+    try {
+      const { chromium } = await import('playwright');
+      navegador = await chromium.launch({
+        ...(process.env.PLAYWRIGHT_EXECUTABLE_PATH
+          ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH }
+          : {}),
+        args: ['--no-sandbox'],
+      });
+      pagina = await navegador.newPage();
+    } catch {
+      navegador = null;
+    }
+  });
+
+  after(async () => {
+    await navegador?.close().catch(() => {});
+  });
+
+  /**
+   * O portal responde com alerta e sem mudar de rota. Esperar só pela URL
+   * gastava 45s por tentativa — três tentativas viravam minutos de silêncio,
+   * indistinguíveis de travamento.
+   */
+  test('alerta encerra a espera sem depender da rota mudar', async (t) => {
+    if (!navegador) return t.skip('Playwright/Chromium indisponível');
+
+    const receita = receitaFormulario({
+      id: 'fixture',
+      nome: 'Portal de teste',
+      url: 'about:blank',
+      tentativasPortal: 1,
+      urlResultado: /nunca-vai-casar/,
+      sinaisResultado: ['br-alert-messages'],
+      seletores: {
+        campoDocumento: ['#NI'],
+        botaoEnviar: ['#ir'],
+        alvoResultado: ['br-alert-messages', 'main'],
+      },
+    });
+
+    await pagina.setContent(`
+      <input id="NI"><button id="ir"></button>
+      <br-alert-messages></br-alert-messages><main>Certidão de Pessoa Jurídica</main>
+      <script>
+        document.getElementById('ir').onclick = () => {
+          setTimeout(() => {
+            document.querySelector('br-alert-messages').textContent =
+              'Não foi possível concluir a ação. Por favor, tente novamente dentro de alguns minutos. 023';
+          }, 300);
+        };
+      </script>`);
+
+    const inicio = Date.now();
+    const resultado = await receita.executar({
+      pagina,
+      cliente: { documento: '11222333000181', tipo: 'cnpj' },
+      primeiroSeletorPresente,
+      esperarSeletor,
+      dormir: async () => {},
+    });
+    const decorrido = Date.now() - inicio;
+
+    assert.equal(resultado.situacao, 'indisponivel');
+    assert.ok(decorrido < 15_000, `esperou ${decorrido}ms — deveria sair assim que o alerta aparece`);
+  });
+
+  test('a retentativa avisa o que está fazendo', async (t) => {
+    if (!navegador) return t.skip('Playwright/Chromium indisponível');
+
+    const avisos = [];
+    const receita = receitaFormulario({
+      id: 'fixture',
+      nome: 'Portal de teste',
+      url: 'about:blank',
+      tentativasPortal: 2,
+      sinaisResultado: ['#saida'],
+      seletores: { campoDocumento: ['#NI'], botaoEnviar: ['#ir'], alvoResultado: ['#saida'] },
+    });
+
+    await pagina.setContent(`
+      <input id="NI"><button id="ir"></button>
+      <div id="saida">Sistema indisponível</div>`);
+
+    await receita.executar({
+      pagina,
+      cliente: { documento: '11222333000181', tipo: 'cnpj' },
+      primeiroSeletorPresente,
+      esperarSeletor,
+      dormir: async () => {},
+      registrar: (m) => avisos.push(m),
+    });
+
+    assert.equal(avisos.length, 1, 'avisa antes de esperar, não depois de terminar');
+    assert.match(avisos[0], /tentativa 1\/2/);
+  });
+});
