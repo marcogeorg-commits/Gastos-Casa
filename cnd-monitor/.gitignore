@@ -1,5 +1,10 @@
 node_modules/
 
-# `calibracao/` NAO entra aqui de proposito: o inventario e a captura de tela
-# gerados por `npm run calibrar` sao feitos para serem commitados e revisados,
-# e sao o insumo para ajustar os seletores em src/receitas/.
+# `calibracao/` NAO entra aqui de proposito: o inventario e a captura da tela do
+# formulario, gerados por `npm run calibrar`, sao feitos para serem commitados e
+# revisados -- sao o insumo para ajustar os seletores em src/receitas/.
+#
+# As capturas de falha sao a excecao: mostram a tela de uma consulta real e
+# podem conter dados fiscais de cliente. Ficam de fora do versionamento; envie
+# manualmente se precisar de ajuda para diagnosticar.
+calibracao/falha-*

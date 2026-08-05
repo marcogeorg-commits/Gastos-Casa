@@ -12,7 +12,12 @@
  * portais para conferir/atualizar os seletores de uma vez.
  */
 
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { RECEITAS } from '../receitas/index.js';
+
+const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
 export const id = 'web';
 export const nome = 'Automação própria (Playwright)';
@@ -129,6 +134,32 @@ export async function esperarSeletor(pagina, candidatos, tempoLimite = 20_000) {
   }
 }
 
+/**
+ * Guarda a tela e o texto da pagina quando a consulta falha.
+ *
+ * Sem isso, diagnosticar exige reproduzir o erro -- e portais publicos mudam
+ * entre uma tentativa e outra. A captura e o que a proxima rodada de ajuste
+ * tem de concreto.
+ */
+async function registrarFalha(pagina, idCertidao, cliente) {
+  try {
+    const pasta = resolve(RAIZ, 'calibracao');
+    await mkdir(pasta, { recursive: true });
+    const base = resolve(pasta, `falha-${idCertidao}-${cliente.documento}`);
+
+    await pagina.screenshot({ path: `${base}.png`, fullPage: true });
+    const texto = await pagina.textContent('body').catch(() => '');
+    await writeFile(
+      `${base}.txt`,
+      `URL: ${pagina.url()}\n\n${String(texto ?? '').replace(/\s+/g, ' ').trim()}\n`,
+      'utf8',
+    );
+    return `calibracao/falha-${idCertidao}-${cliente.documento}.png`;
+  } catch {
+    return null;
+  }
+}
+
 export async function consultar({ cliente, idCertidao, env = process.env }) {
   const receita = RECEITAS[idCertidao];
 
@@ -196,6 +227,10 @@ export async function consultar({ cliente, idCertidao, env = process.env }) {
       // essa nota, uma consulta barrada pareceria um portal fora do ar.
       if (captcha && resultado.situacao === 'erro') {
         resultado.detalhe = `${resultado.detalhe} (a página usa ${captcha.provedor} invisível — pode ter barrado a automação)`;
+      }
+      if (resultado.situacao === 'erro') {
+        const captura = await registrarFalha(pagina, idCertidao, cliente);
+        if (captura) resultado.detalhe = `${resultado.detalhe} — tela salva em ${captura}`;
       }
       return resultado;
     }
