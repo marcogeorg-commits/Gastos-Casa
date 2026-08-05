@@ -508,3 +508,129 @@ describe('retentativa quando o portal pisca', async () => {
     assert.match(resultado.detalhe, /após 2 tentativas/);
   });
 });
+
+describe('leitura do desfecho', async () => {
+  let navegador;
+  let pagina;
+
+  before(async () => {
+    try {
+      const { chromium } = await import('playwright');
+      navegador = await chromium.launch({
+        ...(process.env.PLAYWRIGHT_EXECUTABLE_PATH
+          ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH }
+          : {}),
+        args: ['--no-sandbox'],
+      });
+      pagina = await navegador.newPage();
+    } catch {
+      navegador = null;
+    }
+  });
+
+  after(async () => {
+    await navegador?.close().catch(() => {});
+  });
+
+  const receitaTeste = () =>
+    receitaFormulario({
+      id: 'fixture',
+      nome: 'Portal de teste',
+      url: 'about:blank',
+      tentativasPortal: 1,
+      seletores: {
+        campoDocumento: ['#NI'],
+        botaoEnviar: ['#ir'],
+        alvoResultado: ['br-alert-messages', 'app-resultado', 'main'],
+      },
+    });
+
+  /**
+   * Foi assim que a consulta real falhou: o portal pôs a mensagem no alerta do
+   * topo e deixou `app-resultado` vazio. Aceitar texto vazio produzia
+   * "resposta não reconhecida" com a mensagem bem visível na tela.
+   */
+  test('container vazio não engole a mensagem que está no alerta', async (t) => {
+    if (!navegador) return t.skip('Playwright/Chromium indisponível');
+
+    await pagina.setContent(`
+      <input id="NI"><button id="ir"></button>
+      <br-alert-messages></br-alert-messages>
+      <app-resultado></app-resultado>
+      <main>Certidão de Pessoa Jurídica</main>
+      <script>
+        document.getElementById('ir').onclick = () => {
+          document.querySelector('br-alert-messages').textContent =
+            'Não foi possível concluir a ação para o contribuinte informado. Por favor, tente novamente dentro de alguns minutos. 023';
+        };
+      </script>`);
+
+    const resultado = await receitaTeste().executar({
+      pagina,
+      cliente: { documento: '11222333000181', tipo: 'cnpj' },
+      primeiroSeletorPresente,
+      esperarSeletor,
+      dormir: async () => {},
+    });
+
+    assert.equal(resultado.situacao, 'indisponivel');
+    assert.match(resultado.detalhe, /tente novamente/);
+  });
+
+  test('sem alerta, lê o resultado de verdade', async (t) => {
+    if (!navegador) return t.skip('Playwright/Chromium indisponível');
+
+    await pagina.setContent(`
+      <input id="NI"><button id="ir"></button>
+      <br-alert-messages></br-alert-messages>
+      <app-resultado></app-resultado>
+      <main></main>
+      <script>
+        document.getElementById('ir').onclick = () => {
+          document.querySelector('app-resultado').textContent =
+            'Certidão Negativa de Débitos. Válida até 01/02/2027.';
+        };
+      </script>`);
+
+    const resultado = await receitaTeste().executar({
+      pagina,
+      cliente: { documento: '11222333000181', tipo: 'cnpj' },
+      primeiroSeletorPresente,
+      esperarSeletor,
+      dormir: async () => {},
+    });
+
+    assert.equal(resultado.situacao, 'negativa');
+    assert.equal(resultado.validaAte, '01/02/2027');
+  });
+
+  test('página muda sem texto nenhum vira erro claro, não "não reconhecida"', async (t) => {
+    if (!navegador) return t.skip('Playwright/Chromium indisponível');
+
+    await pagina.setContent(
+      `<input id="NI"><button id="ir"></button><app-resultado></app-resultado>`,
+    );
+
+    const resultado = await receitaTeste().executar({
+      pagina,
+      cliente: { documento: '11222333000181', tipo: 'cnpj' },
+      primeiroSeletorPresente,
+      esperarSeletor,
+      dormir: async () => {},
+    });
+
+    assert.equal(resultado.situacao, 'erro');
+    assert.match(resultado.detalhe, /não trouxe texto/);
+  });
+
+  test('seletor específico vence o genérico quando ambos já estão na página', async (t) => {
+    if (!navegador) return t.skip('Playwright/Chromium indisponível');
+
+    // `Promise.any` devolvia quem resolvesse primeiro, e `body` sempre ganharia.
+    await pagina.setContent('<app-resultado>alvo certo</app-resultado>');
+    assert.equal(
+      await esperarSeletor(pagina, ['app-resultado', 'body'], 3000),
+      'app-resultado',
+    );
+  });
+});

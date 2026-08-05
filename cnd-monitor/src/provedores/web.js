@@ -138,8 +138,14 @@ export async function esperarSeletor(pagina, candidatos, tempoLimite = 20_000) {
   const lista = candidatos ?? [];
   if (lista.length === 0) return null;
 
+  // Prioridade antes de pressa: se algum candidato ja esta na pagina, vale o de
+  // maior prioridade. A corrida abaixo devolve quem resolver primeiro, e um
+  // seletor generico como `body` sempre venceria o especifico.
+  const jaPresente = await primeiroSeletorPresente(pagina, lista);
+  if (jaPresente) return jaPresente;
+
   try {
-    // Corrida entre os candidatos: vale o primeiro que a pagina renderizar.
+    // Nenhum na tela ainda: vale o primeiro que a pagina renderizar.
     return await Promise.any(
       lista.map((seletor) =>
         pagina

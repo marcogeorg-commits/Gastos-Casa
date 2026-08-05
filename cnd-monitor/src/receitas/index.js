@@ -69,6 +69,33 @@ export function receitaFormulario(config) {
   };
 }
 
+/**
+ * Texto do desfecho, na ordem de prioridade dos candidatos.
+ *
+ * Um container existir nao significa que ele diga algo: no portal da Receita o
+ * `app-resultado` fica vazio quando a resposta vem como alerta no topo da
+ * pagina. Ler o primeiro que casa e aceitar string vazia produzia
+ * "resposta nao reconhecida" com a mensagem bem visivel na tela.
+ */
+async function textoDoResultado(pagina, candidatos, esperar) {
+  const lista = candidatos ?? [];
+  if (lista.length === 0) return '';
+
+  // Da tempo de o SPA montar ao menos um dos alvos antes de varrer.
+  await esperar(pagina, lista);
+
+  for (const seletor of lista) {
+    const alvo = pagina.locator(seletor).first();
+    if ((await alvo.count()) === 0) continue;
+
+    const texto = ((await alvo.textContent().catch(() => '')) ?? '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (texto) return texto;
+  }
+  return '';
+}
+
 /** Uma passada pelo formulário: preenche, envia e lê o que voltou. */
 async function umaTentativa(config, { pagina, cliente, primeiroSeletorPresente, esperarSeletor }) {
   // Sem `esperarSeletor` (chamada direta em teste) cai na sondagem simples.
@@ -125,9 +152,13 @@ async function umaTentativa(config, { pagina, cliente, primeiroSeletorPresente, 
   }
   await pagina.waitForLoadState('networkidle').catch(() => {});
 
-  const alvo = await esperar(pagina, alvoResultado ?? []);
-  const texto = alvo ? await pagina.textContent(alvo) : await pagina.textContent('body');
-  const limpo = String(texto ?? '').replace(/\s+/g, ' ').trim();
+  const limpo = await textoDoResultado(pagina, alvoResultado, esperar);
+  if (!limpo) {
+    return {
+      situacao: 'erro',
+      detalhe: `A página não trouxe texto de resultado. Rode "npm run calibrar -- ${config.id}".`,
+    };
+  }
 
   const situacao = interpretarTexto(limpo);
   if (!situacao) {
@@ -188,7 +219,10 @@ export const RECEITAS = {
         'button:has-text("Emitir Certidão")',
         'button:has-text("Consultar Certidão")',
       ],
-      alvoResultado: ['app-resultado', 'main', 'body'],
+      // O portal responde de dois jeitos: resultado dentro do conteúdo, ou
+      // alerta no topo da página (é onde aparece o erro 023). O alerta vem
+      // primeiro porque, quando existe, ele é o desfecho.
+      alvoResultado: ['br-alert-messages', '.br-message', 'app-resultado', 'main', 'body'],
     },
   }),
 
