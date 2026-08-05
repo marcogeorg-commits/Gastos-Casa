@@ -12,6 +12,7 @@
  */
 
 import { interpretarTexto } from '../situacao.js';
+import { buscarComRetentativa } from '../http.js';
 
 export const id = 'serpro';
 export const nome = 'SERPRO (Consulta CND)';
@@ -34,7 +35,7 @@ export async function obterToken(credenciais, agora = Date.now()) {
   const { consumerKey, consumerSecret, tokenUrl } = credenciais.serpro;
   const basic = Buffer.from(`${consumerKey}:${consumerSecret}`).toString('base64');
 
-  const resposta = await fetch(tokenUrl, {
+  const resposta = await buscarComRetentativa(tokenUrl, {
     method: 'POST',
     headers: {
       Authorization: `Basic ${basic}`,
@@ -78,7 +79,7 @@ export async function consultar({ cliente, idCertidao, credenciais, env = proces
   const caminho = env.SERPRO_CAMINHO_CERTIDAO ?? 'certidao';
   const url = `${base}/${caminho}/${cliente.tipo}/${cliente.documento}`;
 
-  const resposta = await fetch(url, {
+  const resposta = await buscarComRetentativa(url, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
   });
 

@@ -13,6 +13,7 @@
  */
 
 import { interpretarTexto } from '../situacao.js';
+import { buscarComRetentativa } from '../http.js';
 
 export const id = 'infosimples';
 export const nome = 'Infosimples';
@@ -75,7 +76,7 @@ export async function consultar({ cliente, idCertidao, credenciais, env = proces
   };
   if (cliente.municipio) corpo.municipio = cliente.municipio;
 
-  const resposta = await fetch(`${baseUrl}/${caminho}`, {
+  const resposta = await buscarComRetentativa(`${baseUrl}/${caminho}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify(corpo),

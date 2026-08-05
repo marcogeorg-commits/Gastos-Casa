@@ -1,11 +1,32 @@
 import { CATALOGO, descreverSituacao } from './catalogo.js';
 import { provedorDe } from './config.js';
 import { obterProvedor } from './provedores/index.js';
+import { criarRedator } from './segredos.js';
 
 const CONCORRENCIA_PADRAO = 4;
 const TENTATIVAS = 3;
 
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Provedores que cobram por consulta -- os que o teto de gasto vigia. */
+const PROVEDORES_PAGOS = new Set(['infosimples', 'serpro']);
+
+/**
+ * Plano de execucao: o que seria consultado, por provedor, sem tocar na rede.
+ * E o que permite ver a conta antes de gasta-la.
+ */
+export function planejar(config) {
+  const porProvedor = {};
+  let cobraveis = 0;
+
+  for (const { idCertidao, certidao } of montarTarefas(config)) {
+    const provedor = certidao.apenasManual ? 'manual' : provedorDe(config, idCertidao);
+    porProvedor[provedor] = (porProvedor[provedor] ?? 0) + 1;
+    if (PROVEDORES_PAGOS.has(provedor)) cobraveis += 1;
+  }
+
+  return { porProvedor, cobraveis, total: montarTarefas(config).length };
+}
 
 /** Monta a lista plana de consultas (cliente x certidao). */
 export function montarTarefas(config) {
@@ -54,6 +75,18 @@ export async function executar(config, credenciais, opcoes = {}) {
   const { concorrencia = CONCORRENCIA_PADRAO, aoProgredir, env = process.env } = opcoes;
   const tarefas = montarTarefas(config);
   const avisos = [...config.avisos];
+  const redigir = criarRedator(credenciais, env);
+
+  // Teto de gasto: um cadastro duplicado ou um laco errado nao pode virar
+  // fatura. Aborta antes de consultar, nao no meio.
+  const plano = planejar(config);
+  const limite = config.limiteConsultas ?? null;
+  if (limite !== null && plano.cobraveis > limite) {
+    throw new Error(
+      `A rodada faria ${plano.cobraveis} consultas cobradas, acima do limite de ${limite}. ` +
+        'Ajuste "limiteConsultas" em clientes.json se o aumento for intencional.',
+    );
+  }
 
   // Uma verificacao de credencial por provedor, nao por consulta.
   const provedoresIndisponiveis = new Map();
@@ -76,10 +109,13 @@ export async function executar(config, credenciais, opcoes = {}) {
   let resultados;
   try {
     resultados = await emLotes(tarefas, concorrencia, async (tarefa) => {
-      const resultado = await consultarUma(tarefa, config, credenciais, {
+      const bruto = await consultarUma(tarefa, config, credenciais, {
         provedoresIndisponiveis,
         env,
       });
+      // O detalhe vai para o histórico versionado: credencial ecoada pela API
+      // não pode chegar lá.
+      const resultado = { ...bruto, detalhe: redigir(bruto.detalhe) };
       concluidas += 1;
       aoProgredir?.({ concluidas, total: tarefas.length, resultado });
       return resultado;

@@ -130,6 +130,22 @@ RFB decorre dos mesmos débitos que impedem a certidão, uma CND negativa (ou
 positiva com efeito de negativa) é forte indício de ausência de pendência
 CADIN-RFB. O CADIN só agrega quando há débito de **outro** órgão federal.
 
+## Não existe API gratuita de CND
+
+A **emissão** é gratuita no portal da Receita. A **API**, não: nenhum órgão
+publica interface aberta para consulta de CND por empresa privada.
+
+| Caminho | Custo | Confiabilidade |
+|---|---|---|
+| `web` — automação do portal | zero | frágil: quebra quando o site muda, e o hCaptcha invisível pode barrar |
+| SERPRO — API Consulta CND | por consulta, exige e-CNPJ | fonte oficial, a mais sólida |
+| Infosimples / FiscalAPI | por consulta ou mensalidade | cobrem também FGTS, CNDT e SEFAZ |
+
+Grátis e "à prova de futuro" são objetivos que se excluem aqui: a única fonte
+sem custo é raspagem de portal, e portal público muda sem aviso. Por isso o
+provedor é plugável — dá para começar no `web` e trocar por API sem reescrever
+nada, quando a fragilidade incomodar.
+
 ## Provedores
 
 São quatro: `web` (grátis, automação própria), `serpro` e `infosimples` (pagos,
@@ -350,8 +366,26 @@ Calibração de seletores do provedor `web`:
 npm run calibrar -- <certidao> [--headed]
 ```
 
-Falhas de rede são retentadas 3 vezes com backoff exponencial antes de virarem
-`erro` no relatório.
+### Antes de gastar
+
+```bash
+node src/index.js --simular
+```
+
+Mostra quantas consultas seriam feitas, por provedor, e quantas são cobradas —
+sem tocar na rede. `limiteConsultas` no `clientes.json` aborta a rodada antes de
+consultar se o número passar do teto: cadastro duplicado não pode virar fatura.
+
+### Robustez
+
+- Falhas de rede são retentadas 3 vezes com backoff exponencial.
+- HTTP **429**, **408** e **5xx** são tratados como transitórios, com novas
+  tentativas e respeito ao cabeçalho `Retry-After`. Um pico momentâneo no
+  provedor não pode virar "cliente com pendência" no relatório. **401** e
+  **404** voltam de imediato — insistir só queima cota.
+- Credenciais são **mascaradas** em tudo que sai do processo. O histórico é
+  versionado, e uma API que ecoa o token numa mensagem de erro deixaria a
+  credencial no Git para sempre.
 
 ## Observações
 

@@ -4,7 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { carregarConfig, credenciaisDoAmbiente } from './config.js';
 import { descreverSituacao } from './catalogo.js';
-import { executar } from './executor.js';
+import { executar, planejar } from './executor.js';
 import { gerarHtml } from './relatorio.js';
 import { carregarAnterior, compararComAnterior, escreverIndice } from './historico.js';
 
@@ -38,6 +38,7 @@ cnd-monitor — consulta mensal de certidões da carteira de clientes
   --competencia <AAAA-MM>  padrão: mês corrente
   --saida <pasta>          padrão: raiz do cnd-monitor
   --concorrencia <n>       consultas simultâneas (padrão 4)
+  --simular                mostra o que seria consultado, sem tocar na rede
 `);
     return 0;
   }
@@ -52,6 +53,20 @@ cnd-monitor — consulta mensal de certidões da carteira de clientes
     // certidao do arquivo nao podem sobreviver a um "--provedor web".
     config.provedorPadrao = args.provedor;
     config.provedores = {};
+  }
+
+  if (args.simular) {
+    const plano = planejar(config);
+    console.log(`\nPlano da competência ${competencia} — ${plano.total} consultas:`);
+    for (const [provedor, quantas] of Object.entries(plano.porProvedor)) {
+      console.log(`  ${provedor.padEnd(12)} ${quantas}`);
+    }
+    console.log(`\nCobradas por consulta: ${plano.cobraveis}`);
+    if (config.limiteConsultas !== null) {
+      console.log(`Limite configurado: ${config.limiteConsultas}`);
+    }
+    for (const aviso of config.avisos) console.warn(`Aviso: ${aviso}`);
+    return 0;
   }
 
   const credenciais = credenciaisDoAmbiente(env);

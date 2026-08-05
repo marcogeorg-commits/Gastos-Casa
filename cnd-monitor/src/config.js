@@ -77,7 +77,14 @@ export async function carregarConfig(caminho) {
     throw new Error(`Nenhum cliente válido em ${caminho}.`);
   }
 
-  return { provedorPadrao, provedores, certidoesAtivas, clientes, avisos };
+  return {
+    provedorPadrao,
+    provedores,
+    certidoesAtivas,
+    clientes,
+    avisos,
+    limiteConsultas: bruto.limiteConsultas ?? null,
+  };
 }
 
 /** Provedor efetivo de uma certidao, considerando o override por certidao. */
