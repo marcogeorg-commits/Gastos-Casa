@@ -19,7 +19,24 @@ Saídas:
 |---|---|
 | `relatorios/AAAA-MM.html` | relatório da competência |
 | `relatorios/ultimo.html` | cópia da última execução |
-| `historico/AAAA-MM.json` | resultado bruto, para comparação entre meses |
+| `historico/AAAA-MM.json` | resultado bruto, base da comparação entre meses |
+
+## Comparação mês a mês
+
+A partir da segunda execução, o relatório abre com **o que mudou desde a última
+competência** — e é essa a informação que justifica uma rotina mensal. Um
+relatório sem memória trata igual quem sempre esteve irregular e quem acabou de
+ficar; só o segundo caso exige um telefonema hoje.
+
+- Cada certidão é comparada por gravidade, não por igualdade: a transição é
+  classificada como **piorou**, **melhorou** ou apenas mudou. Uma falha de
+  consulta sobre uma certidão que estava negativa conta como piora — portal fora
+  do ar não pode virar boa notícia.
+- Entradas e saídas do cadastro viram **uma linha por cliente**, não uma por
+  certidão: um cliente novo geraria seis linhas iguais e afogaria as pioras.
+- "Anterior" é a última execução que existe, não o mês calendário anterior — se
+  a rotina não rodou em algum mês, a comparação continua fazendo sentido.
+- Quem não mudou fica fora da seção.
 
 ## O que é consultado
 
@@ -134,9 +151,8 @@ mais exige atenção viraria "resposta não reconhecida".
 
 Outras limitações honestas:
 
-- Os seletores em `src/receitas/index.js` **não foram verificados contra os
-  portais em produção** — o ambiente onde este código foi escrito não tem acesso
-  a eles. Calibre antes de confiar (abaixo).
+- Os seletores da **CND Federal foram calibrados** contra o portal real. Os de
+  FGTS, CNDT e SEFAZ/SC ainda não — calibre antes de confiar (abaixo).
 - Runners do GitHub Actions usam IPs de datacenter, que portais públicos às vezes
   bloqueiam. Se o agendamento falhar por isso, rode o `web` na máquina do
   escritório (ou num runner self-hosted) e deixe o Actions para o provedor de API.

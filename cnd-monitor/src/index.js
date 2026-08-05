@@ -6,6 +6,7 @@ import { carregarConfig, credenciaisDoAmbiente } from './config.js';
 import { descreverSituacao } from './catalogo.js';
 import { executar } from './executor.js';
 import { gerarHtml } from './relatorio.js';
+import { carregarAnterior, compararComAnterior } from './historico.js';
 
 const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -70,7 +71,13 @@ cnd-monitor — consulta mensal de certidões da carteira de clientes
     },
   });
 
-  const html = gerarHtml({ competencia, execucao, config });
+  // Comparacao contra a ultima execucao anterior -- carregada antes de gravar a
+  // desta competencia, senao ela compararia consigo mesma numa re-execucao.
+  const pastaHistorico = resolve(pastaSaida, 'historico');
+  const anterior = await carregarAnterior(pastaHistorico, competencia);
+  const comparacao = compararComAnterior(execucao.resultados, anterior);
+
+  const html = gerarHtml({ competencia, execucao, config, comparacao });
 
   const arquivoHtml = resolve(pastaSaida, `relatorios/${competencia}.html`);
   const arquivoUltimo = resolve(pastaSaida, 'relatorios/ultimo.html');
@@ -90,6 +97,11 @@ cnd-monitor — consulta mensal de certidões da carteira de clientes
   console.log(
     `\n${resumo.consultas} consultas · ${resumo.clientesComPendencia} de ${resumo.clientes} clientes exigem ação`,
   );
+  if (comparacao) {
+    console.log(
+      `Desde ${comparacao.competenciaAnterior}: ${comparacao.mudancas.length} mudanças · ${comparacao.pioraram} pioraram · ${comparacao.melhoraram} melhoraram`,
+    );
+  }
   console.log(`Relatório: ${arquivoHtml}`);
   console.log(`Histórico: ${arquivoJson}`);
 

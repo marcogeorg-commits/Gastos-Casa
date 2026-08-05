@@ -1,4 +1,5 @@
 import { CATALOGO, descreverSituacao } from './catalogo.js';
+import { descreverMudanca } from './historico.js';
 
 const MESES = [
   'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
@@ -116,7 +117,76 @@ function secaoManual(manuais) {
     .join('');
 }
 
-export function gerarHtml({ competencia, execucao, config }) {
+const ROTULO_MUDANCA = {
+  piorou: 'Piorou',
+  melhorou: 'Melhorou',
+  novo: 'Nova',
+  mudou: 'Mudou',
+  removido: 'Removida',
+};
+
+/**
+ * Entrar ou sair do cadastro gera uma mudanca por certidao -- seis linhas
+ * iguais para um cliente novo, que afogariam as pioras de verdade. Vira uma
+ * linha por cliente; so transicao de situacao merece detalhe por certidao.
+ */
+function secaoMudancas(comparacao) {
+  const transicoes = comparacao.mudancas.filter(
+    (m) => m.tipo !== 'novo' && m.tipo !== 'removido',
+  );
+  const cadastrais = comparacao.mudancas.filter(
+    (m) => m.tipo === 'novo' || m.tipo === 'removido',
+  );
+
+  const porCliente = new Map();
+  for (const m of cadastrais) {
+    const item = m.atual ?? m.anterior;
+    const chave = `${m.tipo}|${item.documento}`;
+    if (!porCliente.has(chave)) {
+      porCliente.set(chave, { tipo: m.tipo, item, certidoes: [] });
+    }
+    porCliente.get(chave).certidoes.push(item.certidaoNome);
+  }
+
+  const linhasTransicao = transicoes
+    .map((m) => {
+      const item = m.atual ?? m.anterior;
+      return `
+        <li class="pend">
+          <div class="pend__topo">
+            <span class="pend__cliente">${esc(item.cliente)}</span>
+            <span class="pend__doc">${esc(item.documento)}</span>
+            <span class="marca marca--${m.tipo}">${esc(ROTULO_MUDANCA[m.tipo])}</span>
+            ${selo(m.atual?.situacao ?? m.anterior.situacao)}
+          </div>
+          <div class="pend__certidao">${esc(item.certidaoNome)}</div>
+          <p class="pend__detalhe">${esc(descreverMudanca(m))}</p>
+        </li>`;
+    })
+    .join('');
+
+  const linhasCadastro = [...porCliente.values()]
+    .map(
+      ({ tipo, item, certidoes }) => `
+        <li class="pend">
+          <div class="pend__topo">
+            <span class="pend__cliente">${esc(item.cliente)}</span>
+            <span class="pend__doc">${esc(item.documento)}</span>
+            <span class="marca marca--${tipo}">${esc(ROTULO_MUDANCA[tipo])}</span>
+          </div>
+          <p class="pend__detalhe">${
+            tipo === 'novo'
+              ? `entrou no monitoramento — ${certidoes.length} ${certidoes.length === 1 ? 'certidão' : 'certidões'}`
+              : `saiu do monitoramento — ${certidoes.length} ${certidoes.length === 1 ? 'certidão' : 'certidões'}`
+          }</p>
+        </li>`,
+    )
+    .join('');
+
+  return { html: linhasTransicao + linhasCadastro, total: transicoes.length + porCliente.size };
+}
+
+export function gerarHtml({ competencia, execucao, config, comparacao = null }) {
   const { resultados, resumo, avisos, geradoEm } = execucao;
   const clientes = agruparPorCliente(resultados);
   const colunas = config.certidoesAtivas.filter((id) =>
@@ -127,6 +197,7 @@ export function gerarHtml({ competencia, execucao, config }) {
     .filter((r) => descreverSituacao(r.situacao).pendencia)
     .sort((a, b) => a.cliente.localeCompare(b.cliente, 'pt-BR'));
 
+  const mudancas = comparacao ? secaoMudancas(comparacao) : null;
   const manuais = resultados.filter((r) => descreverSituacao(r.situacao).manual);
   const regulares = resumo.consultas - pendencias.length - manuais.length;
   const statusGeral = resumo.clientesComPendencia === 0 ? 'good' : 'critical';
@@ -284,6 +355,14 @@ export function gerarHtml({ competencia, execucao, config }) {
   .pend__detalhe { margin: 6px 0 0; font-size: 14px; color: var(--ink-2); }
   .pend__link { font-size: 13px; color: var(--ink-2); }
 
+  .marca {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+    text-transform: uppercase; padding: 2px 8px; border-radius: 999px;
+    border: 1px solid var(--borda); color: var(--ink-2);
+  }
+  .marca--piorou { color: var(--critical); border-color: var(--critical); }
+  .marca--melhorou { color: var(--good); border-color: var(--good); }
+
   .manual { padding: 16px 0; border-bottom: 1px solid var(--linha); }
   .manual:last-child { border-bottom: 0; }
   .fichas { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 8px; }
@@ -334,7 +413,16 @@ export function gerarHtml({ competencia, execucao, config }) {
       `${pendencias.length} itens abertos`,
       statusGeral,
     )}
-    ${tile(manuais.length, 'Conferências manuais', 'sem API disponível')}
+    ${
+      comparacao
+        ? tile(
+            comparacao.pioraram,
+            'Pioraram no mês',
+            `desde ${esc(competenciaPorExtenso(comparacao.competenciaAnterior))}`,
+            comparacao.pioraram > 0 ? 'critical' : 'good',
+          )
+        : tile(manuais.length, 'Conferências manuais', 'sem API disponível')
+    }
   </div>
 
   ${
@@ -342,6 +430,15 @@ export function gerarHtml({ competencia, execucao, config }) {
       ? `<section>
     <h2>Avisos de cadastro e configuração</h2>
     <div class="cartao"><ul class="avisos">${avisos.map((a) => `<li>${esc(a)}</li>`).join('')}</ul></div>
+  </section>`
+      : ''
+  }
+
+  ${
+    mudancas && mudancas.total > 0
+      ? `<section>
+    <h2>Mudanças desde ${esc(competenciaPorExtenso(comparacao.competenciaAnterior))} (${mudancas.total})</h2>
+    <div class="cartao"><ul class="pendencias">${mudancas.html}</ul></div>
   </section>`
       : ''
   }

@@ -7,9 +7,10 @@
  * rodada perdida. Se nenhum casar, a consulta volta como `erro` dizendo qual
  * campo faltou — nunca como um resultado adivinhado.
  *
- * >>> Os seletores abaixo NÃO foram verificados contra os portais em produção.
- * >>> Rode `npm run calibrar -- <certidao>` de uma máquina com acesso aos sites
- * >>> para confirmá-los antes de confiar no resultado.
+ * >>> Só os da CND Federal foram calibrados contra o portal real. Os de FGTS,
+ * >>> CNDT e SEFAZ/SC continuam sendo palpite: rode
+ * >>> `npm run calibrar -- <certidao>` de uma máquina com acesso aos sites
+ * >>> antes de confiar no resultado deles.
  */
 
 import { formatar } from '../documentos.js';
