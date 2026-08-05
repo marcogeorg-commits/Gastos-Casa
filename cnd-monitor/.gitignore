@@ -1,5 +1,10 @@
 node_modules/
 
+# `relatorios/ultimo.html` e uma copia por conveniencia, reescrita a cada
+# execucao. Versiona-la fazia todo `git pull` conflitar depois de uma rodada
+# local. Os relatorios por competencia continuam versionados.
+relatorios/ultimo.html
+
 # `calibracao/` NAO entra aqui de proposito: o inventario e a captura da tela do
 # formulario, gerados por `npm run calibrar`, sao feitos para serem commitados e
 # revisados -- sao o insumo para ajustar os seletores em src/receitas/.

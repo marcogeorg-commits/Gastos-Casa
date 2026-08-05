@@ -46,6 +46,21 @@ Existe um servidor local porque `file://` bloqueia `fetch` de arquivos vizinhos:
 aberto com dois cliques, o painel não conseguiria ler o histórico. Ele serve só
 a pasta do `cnd-monitor`, só em `localhost`, e não escreve nada.
 
+### Se o `git pull` reclamar de alterações locais
+
+As execuções gravam em `relatorios/` e `historico/`, e o agendamento no GitHub
+Actions versiona os mesmos caminhos. Rodar a mesma competência nos dois lugares
+deixa o arquivo local diferente do remoto, e o `git` recusa o merge:
+
+```bash
+git checkout -- cnd-monitor/relatorios cnd-monitor/historico
+git pull
+```
+
+Descartar é seguro: o conteúdo é derivado — basta rodar de novo. Para
+experimentar sem tocar nos arquivos versionados, use uma competência própria
+(`--competencia teste`) ou outra pasta (`--saida /tmp/cnd`).
+
 ## Onde guardar o quê
 
 | Dado | Onde | Por quê |

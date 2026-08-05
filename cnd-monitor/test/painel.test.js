@@ -83,8 +83,10 @@ describe('painel no navegador', async () => {
       'clientes.json do repositório deve aparecer',
     );
 
+    // Sem execuções ainda, a aba mostra o cartão "Sem histórico" no lugar da
+    // tabela — o teste não pode depender de o repositório já ter rodado.
     await pagina.click('.aba[data-painel="competencias"]');
-    await pagina.waitForSelector('#painel-competencias table');
+    await pagina.waitForSelector('#painel-competencias .cartao');
     assert.equal(await pagina.locator('#painel-clientes').isHidden(), true);
     await pagina.close();
   });
