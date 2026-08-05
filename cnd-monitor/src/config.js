@@ -69,6 +69,8 @@ export async function carregarConfig(caminho) {
       dataNascimento: cru.dataNascimento ?? null,
       uf: cru.uf ?? null,
       observacao: cru.observacao ?? null,
+      // O certificado é por cliente; a senha nunca vem daqui (ver certificados.js).
+      certificado: cru.certificado ?? null,
       certidoes,
     });
   }
@@ -84,6 +86,7 @@ export async function carregarConfig(caminho) {
     clientes,
     avisos,
     limiteConsultas: bruto.limiteConsultas ?? null,
+    certificados: bruto.certificados ?? {},
   };
 }
 

@@ -2,8 +2,9 @@ import * as mock from './mock.js';
 import * as infosimples from './infosimples.js';
 import * as serpro from './serpro.js';
 import * as web from './web.js';
+import * as ecac from './ecac.js';
 
-export const PROVEDORES = { mock, infosimples, serpro, web };
+export const PROVEDORES = { mock, infosimples, serpro, web, ecac };
 
 export function obterProvedor(id) {
   const provedor = PROVEDORES[id];

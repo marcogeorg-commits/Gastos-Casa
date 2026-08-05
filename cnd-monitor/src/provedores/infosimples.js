@@ -26,6 +26,10 @@ export const ENDPOINTS = {
   municipal: { caminho: null, confirmar: true },
 };
 
+export function suporta(idCertidao, env = process.env) {
+  return Boolean(resolverEndpoint(idCertidao, env));
+}
+
 export function credenciaisFaltando(credenciais) {
   return credenciais?.infosimples?.token ? [] : ['INFOSIMPLES_TOKEN'];
 }

@@ -24,6 +24,10 @@ export const nome = 'Automação própria (Playwright)';
 
 const TEMPO_LIMITE = 45_000;
 
+export function suporta(idCertidao) {
+  return Boolean(RECEITAS[idCertidao]);
+}
+
 export function credenciaisFaltando() {
   return []; // Consulta publica: nao ha credencial a exigir.
 }

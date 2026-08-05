@@ -216,3 +216,54 @@ test('falha técnica vira frase que um contador entende', async () => {
   assert.match(html, /pend__tecnico/);
   assert.match(html, /ERR_TUNNEL_CONNECTION_FAILED/);
 });
+
+test('CADIN é manual no web e automatizável no e-CAC', async () => {
+  // Antes isso era um flag fixo no catálogo: a certidão era manual para sempre,
+  // qualquer que fosse o provedor. Quem sabe consultar é o provedor.
+  const { temAutomacao } = await import('../src/executor.js');
+
+  const noWeb = await configTemporaria({
+    provedorPadrao: 'web',
+    certidoes: ['cadin_federal', 'rfb_pgfn'],
+    clientes: [{ nome: 'Alfa', documento: '11.222.333/0001-81' }],
+  });
+  assert.equal(temAutomacao(noWeb, 'cadin_federal'), false);
+  assert.equal(temAutomacao(noWeb, 'rfb_pgfn'), true);
+
+  const noEcac = await configTemporaria({
+    provedorPadrao: 'ecac',
+    certidoes: ['cadin_federal', 'rfb_pgfn'],
+    clientes: [{ nome: 'Alfa', documento: '11.222.333/0001-81' }],
+  });
+  assert.equal(temAutomacao(noEcac, 'cadin_federal'), true);
+  assert.equal(temAutomacao(noEcac, 'rfb_pgfn'), false, 'o e-CAC não emite CND');
+});
+
+test('sem certificado, o e-CAC devolve conferência manual explicando o que falta', async () => {
+  const config = await configTemporaria({
+    provedorPadrao: 'ecac',
+    certidoes: ['cadin_federal'],
+    clientes: [{ nome: 'Alfa', documento: '11.222.333/0001-81' }],
+  });
+
+  const execucao = await executar(config, credenciaisDoAmbiente({}));
+  const [resultado] = execucao.resultados;
+
+  assert.equal(resultado.situacao, 'manual');
+  assert.match(resultado.detalhe, /sem certificado digital/);
+});
+
+test('o e-CAC lê "nada consta" do CADIN como ausência de registro', async () => {
+  const { interpretar } = await import('../src/provedores/ecac.js');
+
+  assert.equal(
+    interpretar('Não existem registros para o CNPJ informado.', 'cadin_federal').situacao,
+    'sem_registro',
+  );
+  assert.equal(
+    interpretar('Registro incluído em 01/07/2026 pela Receita Federal', 'cadin_federal').situacao,
+    'positiva',
+  );
+  // Sem palavra reconhecível, nunca inventa desfecho.
+  assert.equal(interpretar('bem-vindo ao portal', 'cadin_federal').situacao, 'erro');
+});

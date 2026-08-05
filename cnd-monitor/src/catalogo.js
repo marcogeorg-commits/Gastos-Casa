@@ -27,11 +27,24 @@ export const CATALOGO = {
       'Cadastro Informativo de Créditos não Quitados do Setor Público Federal.',
     aceita: ['cnpj', 'cpf'],
     validadeDias: null,
-    provedores: ['mock'],
-    apenasManual: true,
-    exigeProcuracao: true,
-    motivoManual:
+    provedores: ['ecac', 'mock'],
+    exigeCertificado: true,
+    motivoSemProvedor:
       'Não existe API aberta a empresa privada. A API do Cadin-PGFN no catálogo ConectaGov é restrita a órgãos da administração pública federal. O caminho legítimo é o e-CAC ("Consulta de Inclusão no CADIN/SISBACEN") com certificado digital do escritório e procuração eletrônica do cliente.',
+    urlManual: 'https://cav.receita.fazenda.gov.br/autenticacao/login',
+  },
+
+  situacao_fiscal: {
+    nome: 'Situação Fiscal',
+    orgao: 'Receita Federal (e-CAC)',
+    descricao:
+      'Relatório de Situação Fiscal: lista as pendências do contribuinte, incluindo as que impedem a CND.',
+    aceita: ['cnpj', 'cpf'],
+    validadeDias: null,
+    provedores: ['ecac', 'mock'],
+    exigeCertificado: true,
+    motivoSemProvedor:
+      'O relatório só existe dentro do e-CAC, que exige certificado digital do cliente ou procuração eletrônica.',
     urlManual: 'https://cav.receita.fazenda.gov.br/autenticacao/login',
   },
 

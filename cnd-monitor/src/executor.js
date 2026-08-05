@@ -8,6 +8,19 @@ const TENTATIVAS = 3;
 
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * O provedor escolhido sabe consultar esta certidao?
+ *
+ * Antes isso era um flag fixo no catalogo (`apenasManual`), o que amarrava a
+ * certidao a ser sempre manual. Perguntar ao provedor deixa a mesma certidao
+ * ser manual num e automatica noutro -- o CADIN e exatamente esse caso: sem
+ * saida no `web`, viavel no e-CAC com certificado.
+ */
+export function temAutomacao(config, idCertidao) {
+  const provedor = obterProvedor(provedorDe(config, idCertidao));
+  return provedor.suporta ? provedor.suporta(idCertidao) : true;
+}
+
 /** Provedores que cobram por consulta -- os que o teto de gasto vigia. */
 const PROVEDORES_PAGOS = new Set(['infosimples', 'serpro']);
 
@@ -19,8 +32,8 @@ export function planejar(config) {
   const porProvedor = {};
   let cobraveis = 0;
 
-  for (const { idCertidao, certidao } of montarTarefas(config)) {
-    const provedor = certidao.apenasManual ? 'manual' : provedorDe(config, idCertidao);
+  for (const { idCertidao } of montarTarefas(config)) {
+    const provedor = temAutomacao(config, idCertidao) ? provedorDe(config, idCertidao) : 'manual';
     porProvedor[provedor] = (porProvedor[provedor] ?? 0) + 1;
     if (PROVEDORES_PAGOS.has(provedor)) cobraveis += 1;
   }
@@ -91,7 +104,7 @@ export async function executar(config, credenciais, opcoes = {}) {
   // Uma verificacao de credencial por provedor, nao por consulta.
   const provedoresIndisponiveis = new Map();
   for (const idCertidao of new Set(tarefas.map((t) => t.idCertidao))) {
-    if (CATALOGO[idCertidao].apenasManual) continue;
+    if (!temAutomacao(config, idCertidao)) continue;
     const idProvedor = provedorDe(config, idCertidao);
     if (provedoresIndisponiveis.has(idProvedor)) continue;
 
@@ -137,7 +150,7 @@ export async function executar(config, credenciais, opcoes = {}) {
 async function encerrarProvedores(config, tarefas) {
   const usados = new Set(
     tarefas
-      .filter((t) => !t.certidao.apenasManual)
+      .filter((t) => temAutomacao(config, t.idCertidao))
       .map((t) => provedorDe(config, t.idCertidao)),
   );
 
@@ -164,16 +177,18 @@ async function consultarUma(tarefa, config, credenciais, ctx) {
     urlManual: certidao.urlManual,
   };
 
-  if (certidao.apenasManual) {
+  const idProvedor = provedorDe(config, idCertidao);
+
+  if (!temAutomacao(config, idCertidao)) {
     return {
       ...base,
       provedor: null,
       situacao: 'manual',
-      detalhe: certidao.motivoManual,
+      detalhe:
+        certidao.motivoSemProvedor ??
+        `O provedor "${idProvedor}" não atende "${idCertidao}".`,
     };
   }
-
-  const idProvedor = provedorDe(config, idCertidao);
 
   if (ctx.provedoresIndisponiveis.has(idProvedor)) {
     return {
@@ -187,7 +202,7 @@ async function consultarUma(tarefa, config, credenciais, ctx) {
   try {
     const provedor = obterProvedor(idProvedor);
     const resultado = await comRetentativa(() =>
-      provedor.consultar({ cliente, certidao, idCertidao, credenciais, env: ctx.env }),
+      provedor.consultar({ cliente, certidao, idCertidao, credenciais, config, env: ctx.env }),
     );
     return { ...base, provedor: idProvedor, ...resultado };
   } catch (erro) {

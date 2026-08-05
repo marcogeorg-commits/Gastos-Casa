@@ -19,6 +19,10 @@ export const nome = 'SERPRO (Consulta CND)';
 
 export const CERTIDOES_SUPORTADAS = ['rfb_pgfn'];
 
+export function suporta(idCertidao) {
+  return CERTIDOES_SUPORTADAS.includes(idCertidao);
+}
+
 export function credenciaisFaltando(credenciais) {
   const faltando = [];
   if (!credenciais?.serpro?.consumerKey) faltando.push('SERPRO_CONSUMER_KEY');

@@ -99,7 +99,8 @@ ficar; só o segundo caso exige um telefonema hoje.
 | Certidão | Órgão | Fonte automatizável |
 |---|---|---|
 | CND Federal | Receita Federal / PGFN | SERPRO (oficial), Infosimples ou **`web` (grátis)** |
-| CADIN Federal | PGFN / RFB (SISBACEN) | **não há API** — conferência manual (ver abaixo) |
+| CADIN Federal | PGFN / RFB (SISBACEN) | **`ecac` (grátis)** — exige certificado digital |
+| Situação Fiscal | Receita Federal (e-CAC) | **`ecac` (grátis)** — exige certificado digital |
 | CRF do FGTS | Caixa | Infosimples ou `web` (provável captcha) |
 | CNDT Trabalhista | TST | Infosimples ou `web` (provável captcha) |
 | CND Estadual SC | SEF/SC | Infosimples ou `web` (provável captcha) |
@@ -108,7 +109,53 @@ ficar; só o segundo caso exige um telefonema hoje.
 O catálogo fica em `src/catalogo.js`: acrescentar uma certidão é acrescentar uma
 entrada lá e um endpoint no provedor.
 
-### Por que o CADIN federal é manual
+## e-CAC com certificado digital
+
+Com o certificado A1 do cliente (ou procuração eletrônica dele para o
+escritório), o provedor `ecac` alcança o que nenhum portal público entrega:
+
+| Consulta | O que traz |
+|---|---|
+| **CADIN Federal** | o único caminho legítimo para empresa privada |
+| **Situação Fiscal** | todas as pendências do contribuinte — mais detalhado que a própria CND |
+
+```json
+{
+  "certificados": { "pastaPadrao": "~/Certificados" },
+  "provedores": { "cadin_federal": "ecac", "situacao_fiscal": "ecac" },
+  "clientes": [
+    {
+      "nome": "Alfa Comércio Ltda",
+      "documento": "11.222.333/0001-81",
+      "certificado": { "arquivo": "alfa.pfx", "senhaVariavel": "CERT_ALFA" }
+    }
+  ]
+}
+```
+
+A senha **nunca** entra no cadastro: vem da variável de ambiente nomeada em
+`senhaVariavel`. O cadastro com senha escrita é recusado.
+
+Cada cliente é consultado num contexto próprio do navegador — é onde o
+Playwright prende o certificado, e misturá-los faria um cliente ser consultado
+com a credencial de outro.
+
+### O que este módulo recusa, e por quê
+
+Um `.pfx` mais a senha permitem **assinar como o cliente**. Por isso:
+
+- **Certificado dentro do repositório é recusado.** Commitado uma vez, fica no
+  histórico do Git para sempre, ao alcance de quem tiver acesso hoje ou daqui a
+  cinco anos.
+- **Senha no cadastro é recusada.** O `clientes.json` é versionado.
+- **Sessão não autenticada é detectada** antes de ler qualquer coisa: sem essa
+  checagem, o texto da tela de login viraria "resultado" no relatório.
+
+Rode o `ecac` na máquina do escritório, com os certificados num cofre fora do
+projeto. **Nunca no GitHub Actions** — subir 20 certificados de clientes para um
+runner na nuvem é risco desproporcional ao problema que resolve.
+
+### Por que o CADIN federal era manual
 
 Não existe API de CADIN federal aberta a empresa privada:
 
@@ -121,9 +168,10 @@ Não existe API de CADIN federal aberta a empresa privada:
 - os endpoints "CADIN" de provedores de mercado cobrem os cadastros **estaduais e
   municipais** (SP, PR, MG, RS, Pref. SP), não o federal.
 
-Por isso a rotina marca o CADIN como *conferência manual* e agrupa todos os
-clientes numa seção única do relatório, com link para o e-CAC. Ele **não** conta
-como pendência — senão todo cliente apareceria em vermelho todo mês.
+Sem certificado, a rotina marca o CADIN como *conferência manual* e agrupa todos
+os clientes numa seção única do relatório, com link para o e-CAC. Ele **não**
+conta como pendência — senão todo cliente apareceria em vermelho todo mês. Com
+certificado, o provedor `ecac` resolve.
 
 Na prática, a CND Federal já cobre boa parte do risco: como o CADIN incluído pela
 RFB decorre dos mesmos débitos que impedem a certidão, uma CND negativa (ou
@@ -137,7 +185,8 @@ publica interface aberta para consulta de CND por empresa privada.
 
 | Caminho | Custo | Confiabilidade |
 |---|---|---|
-| `web` — automação do portal | zero | frágil: quebra quando o site muda, e o hCaptcha invisível pode barrar |
+| `web` — automação do portal | zero | frágil; na CND Federal o hCaptcha **barrou** em teste real |
+| `ecac` — certificado do cliente | zero | cobre CADIN e Situação Fiscal; exige certificado e cuidado com ele |
 | SERPRO — API Consulta CND | por consulta, exige e-CNPJ | fonte oficial, a mais sólida |
 | Infosimples / FiscalAPI | por consulta ou mensalidade | cobrem também FGTS, CNDT e SEFAZ |
 
@@ -197,6 +246,7 @@ qualquer momento, e é isso que se compra ao contratar uma API.
 |---|---|
 | CND Federal (PJ) | **funciona**: o hCaptcha invisível não barrou em consulta real |
 | CND Federal (PF) | funciona se o cadastro tiver `dataNascimento`; sem ela, vira conferência manual |
+| **CND Federal** | **barrado**: o hCaptcha invisível recusou a automação em teste real, embora a consulta manual funcione |
 | **SEFAZ/SC** | **não automatizável**: captcha de imagem visível ("Digite o texto") |
 | CRF do FGTS, CNDT | provável captcha — a calibração confirma |
 
