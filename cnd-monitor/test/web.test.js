@@ -74,24 +74,43 @@ describe('automação com navegador', async () => {
     await navegador?.close().catch(() => {});
   });
 
-  test('captcha visível bloqueia; invisível não', async (t) => {
+  test('desafio com tamanho na tela bloqueia', async (t) => {
     if (!navegador) return t.skip('Playwright/Chromium indisponível');
 
-    await pagina.setContent('<div class="g-recaptcha"></div>');
-    assert.deepEqual(
-      (({ provedor, bloqueante }) => ({ provedor, bloqueante }))(await detectarCaptcha(pagina)),
-      { provedor: 'reCAPTCHA', bloqueante: true },
-    );
+    // Caixa "não sou um robô": ocupa espaço, exige clique humano.
+    await pagina.setContent('<div class="g-recaptcha" style="width:304px;height:78px"></div>');
+    const visivel = await detectarCaptcha(pagina);
+    assert.equal(visivel.provedor, 'reCAPTCHA');
+    assert.equal(visivel.bloqueante, true);
+  });
 
-    // hCaptcha invisível, como o do portal da Receita: existe, mas não pede
-    // nada ao usuário — recusar a consulta só por ele estar lá seria exagero.
-    await pagina.setContent(
-      '<iframe src="https://newassets.hcaptcha.com/captcha/v1/x/static/hcaptcha.html#frame=checkbox-invisible&recaptchacompat=true&size=invisible"></iframe>',
-    );
-    const invisivel = await detectarCaptcha(pagina);
-    assert.equal(invisivel.provedor, 'hCaptcha', 'hcaptcha vem antes de recaptchacompat');
-    assert.equal(invisivel.invisivel, true);
-    assert.equal(invisivel.bloqueante, false);
+  test('hCaptcha invisível é detectado sem bloquear a consulta', async (t) => {
+    if (!navegador) return t.skip('Playwright/Chromium indisponível');
+
+    // Como no portal da Receita: vários iframes de serviço, nenhum visível ao
+    // usuário, e um deles sem a marca "invisible" no src. Decidir pela URL
+    // classificava isso como visível e recusava a consulta sem tentar.
+    await pagina.setContent(`
+      <iframe src="https://newassets.hcaptcha.com/captcha/v1/x/static/hcaptcha.html#frame=checkbox"
+              style="display:none"></iframe>
+      <iframe src="https://newassets.hcaptcha.com/captcha/v1/x/static/hcaptcha.html#frame=challenge&recaptchacompat=true&size=invisible"
+              style="width:1px;height:1px"></iframe>
+      <textarea id="g-recaptcha-response-abc" style="display:none"></textarea>`);
+
+    const achado = await detectarCaptcha(pagina);
+    assert.equal(achado.provedor, 'hCaptcha', 'hcaptcha vem antes de recaptchacompat');
+    assert.equal(achado.invisivel, true);
+    assert.equal(achado.bloqueante, false, 'não pode recusar a consulta sem tentar');
+  });
+
+  test('campo oculto de captcha sozinho não bloqueia', async (t) => {
+    if (!navegador) return t.skip('Playwright/Chromium indisponível');
+
+    // O campo de resposta existe desde que o script carrega, antes de qualquer
+    // desafio. Tratá-lo como bloqueio recusaria toda consulta.
+    await pagina.setContent('<textarea id="h-captcha-response-xyz" style="display:none"></textarea>');
+    const achado = await detectarCaptcha(pagina);
+    assert.equal(achado.bloqueante, false);
 
     await pagina.setContent('<form><input id="NI"></form>');
     assert.equal(await detectarCaptcha(pagina), null);

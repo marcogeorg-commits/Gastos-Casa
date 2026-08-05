@@ -151,6 +151,12 @@ tenta contornar nenhum; ele distingue os dois casos:
   em segundo plano e só desafia sob suspeita. A consulta é tentada; se falhar, o
   relatório registra que a página usa captcha invisível e pode ter barrado.
 
+A distinção é feita por **geometria**: vale se existe na tela um elemento de
+captcha visível e com tamanho de desafio. Ler `size=invisible` da URL do iframe
+não funciona — o portal da Receita monta vários iframes do hCaptcha, e basta o
+primeiro não trazer a marca para o invisível ser classificado como visível e a
+consulta ser recusada sem nem tentar.
+
 O portal da Receita usa **hCaptcha invisível** (confirmado na calibração), então
 a rota gratuita é tentada — mas só o uso real dirá se ele deixa passar.
 

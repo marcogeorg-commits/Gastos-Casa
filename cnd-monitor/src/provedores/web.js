@@ -70,6 +70,11 @@ const MARCAS_CAPTCHA = [
   'img[src*="captcha" i]',
 ];
 
+// Abaixo disso o elemento nao e um desafio para o usuario clicar: e o iframe de
+// servico do captcha invisivel, ou um campo escondido.
+const LARGURA_MINIMA = 60;
+const ALTURA_MINIMA = 30;
+
 /**
  * Detecta captcha e diz se ele bloqueia a automacao.
  *
@@ -79,24 +84,39 @@ const MARCAS_CAPTCHA = [
  * talvez responda normalmente. Ja o captcha visivel exige interacao humana e
  * nao ha o que tentar.
  *
- * O portal da Receita usa hCaptcha invisivel, cuja URL contem
- * `recaptchacompat=true` -- por isso hcaptcha e testado antes, senao a marca de
- * reCAPTCHA casaria primeiro e o diagnostico nomearia o provedor errado.
+ * A decisao vem da **geometria**, nao da URL. Ler `size=invisible` do src era
+ * fragil: o portal da Receita monta varios iframes do hCaptcha, e bastava o
+ * primeiro da lista nao trazer a marca -- ou um campo oculto casar antes -- para
+ * o hCaptcha invisivel ser classificado como visivel e a consulta ser recusada
+ * sem nem tentar. Um desafio que exige clique ocupa espaco na tela; medir isso
+ * responde exatamente a pergunta que importa.
  */
 export async function detectarCaptcha(pagina) {
+  let achado = null;
+
   for (const seletor of MARCAS_CAPTCHA) {
-    const alvo = pagina.locator(seletor).first();
-    if ((await pagina.locator(seletor).count()) === 0) continue;
+    const alvos = pagina.locator(seletor);
+    const quantos = await alvos.count();
+    if (quantos === 0) continue;
 
-    const src = (await alvo.getAttribute('src').catch(() => null)) ?? '';
-    const tamanho = (await alvo.getAttribute('data-size').catch(() => null)) ?? '';
-    const provedor = /hcaptcha/i.test(src) || /hcaptcha/i.test(seletor) ? 'hCaptcha' : 'reCAPTCHA';
-    const invisivel =
-      /size=invisible/i.test(src) || /checkbox-invisible/i.test(src) || tamanho === 'invisible';
+    for (let i = 0; i < Math.min(quantos, 6); i += 1) {
+      const alvo = alvos.nth(i);
+      const src = (await alvo.getAttribute('src').catch(() => null)) ?? '';
+      const provedor =
+        /hcaptcha/i.test(src) || /hcaptcha/i.test(seletor) ? 'hCaptcha' : 'reCAPTCHA';
 
-    return { seletor, provedor, invisivel, bloqueante: !invisivel };
+      achado ??= { seletor, provedor, invisivel: true, bloqueante: false };
+
+      if (!(await alvo.isVisible().catch(() => false))) continue;
+      const caixa = await alvo.boundingBox().catch(() => null);
+      if (!caixa || caixa.width < LARGURA_MINIMA || caixa.height < ALTURA_MINIMA) continue;
+
+      // Um desafio de tamanho real na tela: nao ha o que automatizar.
+      return { seletor, provedor, invisivel: false, bloqueante: true };
+    }
   }
-  return null;
+
+  return achado;
 }
 
 /** Tenta cada seletor candidato e devolve o primeiro presente na pagina. */
