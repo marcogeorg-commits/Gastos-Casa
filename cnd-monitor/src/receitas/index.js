@@ -421,15 +421,31 @@ export const RECEITAS = {
     },
   }),
 
+  /**
+   * SEF/SC — calibrado no portal real.
+   *
+   * A tela tem **captcha de imagem visível** ("Digite o texto"), então o
+   * provedor `web` devolve conferência manual e nem tenta: não há o que
+   * automatizar sem um humano lendo a figura. Os seletores ficam corretos
+   * mesmo assim, para o dia em que a consulta vier por API.
+   */
   sefaz_sc: receitaFormulario({
     id: 'sefaz_sc',
     nome: 'CND Estadual SC (SEF/SC)',
     urls: ['https://sat.sef.sc.gov.br/tax.NET/Sat.CtaCte.Web/SolicitacaoCnd.aspx'],
     formatoDocumento: 'digitos',
+    // `input[type=text]` está fora: a busca do combo (#s2id_autogen1) vem antes
+    // no DOM e receberia o CNPJ.
+    ruidos: [/digite o texto/i],
     seletores: {
-      campoDocumento: ['#txtCnpj', 'input[name*="Cnpj"]', 'input[type="text"]'],
-      botaoEnviar: ['#btnSolicitar', 'input[type="submit"]'],
-      alvoResultado: ['#divResultado', 'main', 'body'],
+      campoDocumento: [
+        '#Body_Main_Main_sepBusca_idnCnd_MaskedField',
+        'input[id*="idnCnd_MaskedField"]',
+      ],
+      campoTipoDocumento: ['#Body_Main_Main_sepBusca_idnCnd_IdentificationTypeField'],
+      campoCaptcha: ['input[placeholder="Digite o texto"]', 'input[name*="ctl18"]'],
+      botaoEnviar: ['#Body_Main_Main_sepBusca_btnBuscar', 'a:has-text("Buscar")', 'input[type="submit"]'],
+      alvoResultado: ['#Body_Main_Main_ctnResultado', 'main'],
     },
   }),
 };

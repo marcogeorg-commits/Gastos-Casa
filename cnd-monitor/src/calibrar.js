@@ -149,7 +149,13 @@ export async function calibrar(idCertidao, opcoes = {}) {
 
     console.log(`\nURL: ${urlAberta}`);
     console.log(`Título: ${inventario.titulo}`);
-    console.log(captcha ? `Captcha detectado: ${captcha}` : 'Sem captcha aparente.');
+    console.log(
+      captcha
+        ? `Captcha detectado: ${captcha.provedor} ${
+            captcha.bloqueante ? 'VISÍVEL (bloqueia a automação)' : 'invisível'
+          } — ${captcha.seletor}`
+        : 'Sem captcha aparente.',
+    );
 
     console.log(`\nCampos (${inventario.campos.length}):`);
     for (const c of inventario.campos) {

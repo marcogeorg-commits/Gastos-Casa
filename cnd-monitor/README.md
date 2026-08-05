@@ -197,7 +197,8 @@ qualquer momento, e é isso que se compra ao contratar uma API.
 |---|---|
 | CND Federal (PJ) | **funciona**: o hCaptcha invisível não barrou em consulta real |
 | CND Federal (PF) | funciona se o cadastro tiver `dataNascimento`; sem ela, vira conferência manual |
-| CRF do FGTS, CNDT, SEFAZ/SC | historicamente com captcha — a calibração confirma |
+| **SEFAZ/SC** | **não automatizável**: captcha de imagem visível ("Digite o texto") |
+| CRF do FGTS, CNDT | provável captcha — a calibração confirma |
 
 O portal de certidões da Receita é um **SPA com rota em hash por tipo de
 sujeito**, e a receita escolhe a rota pelo documento do cliente:
