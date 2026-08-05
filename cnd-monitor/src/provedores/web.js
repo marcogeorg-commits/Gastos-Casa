@@ -84,6 +84,33 @@ export async function primeiroSeletorPresente(pagina, candidatos) {
   return null;
 }
 
+/**
+ * Versao que espera o elemento aparecer, em vez de olhar uma vez so.
+ *
+ * O portal da Receita e um SPA com rotas em hash: quando o `goto` retorna, o
+ * HTML esta em pe mas o formulario ainda nao foi renderizado. Sondar na hora
+ * daria "campo nao encontrado" mesmo com a URL correta.
+ */
+export async function esperarSeletor(pagina, candidatos, tempoLimite = 20_000) {
+  const lista = candidatos ?? [];
+  if (lista.length === 0) return null;
+
+  try {
+    // Corrida entre os candidatos: vale o primeiro que a pagina renderizar.
+    return await Promise.any(
+      lista.map((seletor) =>
+        pagina
+          .locator(seletor)
+          .first()
+          .waitFor({ state: 'attached', timeout: tempoLimite })
+          .then(() => seletor),
+      ),
+    );
+  } catch {
+    return null;
+  }
+}
+
 export async function consultar({ cliente, idCertidao, env = process.env }) {
   const receita = RECEITAS[idCertidao];
 
@@ -112,7 +139,7 @@ export async function consultar({ cliente, idCertidao, env = process.env }) {
     // Portais publicos trocam de endereco sem aviso (e sem redirecionar), entao
     // a receita pode listar varias URLs. Vale a primeira que abrir com o
     // formulario esperado.
-    const urls = receita.urls ?? [receita.url];
+    const urls = receita.urlsPara?.(cliente) ?? receita.urls ?? [receita.url];
     const tentativas = [];
 
     for (const url of urls) {
@@ -123,6 +150,10 @@ export async function consultar({ cliente, idCertidao, env = process.env }) {
         continue;
       }
 
+      // O formulario pode demorar a existir; so depois disso faz sentido
+      // procurar captcha, que tambem e renderizado pelo app.
+      const temFormulario = await esperarSeletor(pagina, receita.seletores.campoDocumento);
+
       const captcha = await detectarCaptcha(pagina);
       if (captcha) {
         return {
@@ -131,16 +162,17 @@ export async function consultar({ cliente, idCertidao, env = process.env }) {
         };
       }
 
-      const temFormulario = await primeiroSeletorPresente(
-        pagina,
-        receita.seletores.campoDocumento,
-      );
       if (!temFormulario) {
-        tentativas.push(`${url}: abriu, mas sem o campo do documento`);
+        tentativas.push(`${url}: abriu, mas o campo do documento não apareceu`);
         continue;
       }
 
-      return await receita.executar({ pagina, cliente, primeiroSeletorPresente });
+      return await receita.executar({
+        pagina,
+        cliente,
+        primeiroSeletorPresente,
+        esperarSeletor,
+      });
     }
 
     return {

@@ -23,7 +23,7 @@
     { "nome": "Eta Clínica Médica Ltda", "documento": "77.888.999/0001-81", "municipio": "Blumenau", "uf": "SC" },
     { "nome": "Teta Participações Ltda", "documento": "88.999.000/1001-41", "municipio": "Florianópolis", "uf": "SC" },
 
-    { "nome": "João da Silva (sócio administrador)", "documento": "123.456.780-62", "observacao": "Pessoa física: só RFB/PGFN, CADIN e CNDT se aplicam." },
+    { "nome": "João da Silva (sócio administrador)", "documento": "123.456.780-62", "dataNascimento": "01/01/1980", "observacao": "Pessoa física: só RFB/PGFN, CADIN e CNDT se aplicam." },
     { "nome": "Maria Souza (produtora rural)", "documento": "234.567.890-92" },
 
     { "nome": "Iota Comércio ME (baixada)", "documento": "345.678.901-75", "ativo": false }

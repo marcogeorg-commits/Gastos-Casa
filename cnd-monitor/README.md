@@ -92,8 +92,22 @@ inventado. Resolver captcha é boa parte do que se paga num provedor de API.
 | Certidão | Expectativa no `web` |
 |---|---|
 | CND Federal (PJ) | melhor candidato — consulta pública, só CNPJ |
-| CND Federal (PF) | recusada: a emissão pede data de nascimento, que não está no cadastro |
+| CND Federal (PF) | funciona se o cadastro tiver `dataNascimento`; sem ela, vira conferência manual |
 | CRF do FGTS, CNDT, SEFAZ/SC | historicamente com captcha — a calibração confirma |
+
+O portal de certidões da Receita é um **SPA com rota em hash por tipo de
+sujeito**, e a receita escolhe a rota pelo documento do cliente:
+
+| Sujeito | Rota |
+|---|---|
+| CNPJ | `servicos.receitafederal.gov.br/servico/certidoes/#/home/cnpj` |
+| CPF | `…/#/home/cpf` |
+| Imóvel rural (CIB) | `…/#/home/cib` — **não modelado**: usa identificador próprio |
+| Obra de construção civil (CNO) | `…/#/home/cno` — **não modelado**, idem |
+
+Por ser SPA, o formulário só existe depois que o JavaScript renderiza: o
+provedor **espera** o campo aparecer em vez de sondar uma vez só. Sondagem
+instantânea daria "campo não encontrado" mesmo com a URL certa.
 
 Outras limitações honestas:
 
@@ -117,6 +131,7 @@ cd cnd-monitor
 npm run preparar-web                  # instala Playwright + Chromium (uma vez)
 
 npm run calibrar -- rfb_pgfn          # lista campos, botões e captcha reais
+npm run calibrar -- rfb_pgfn --tipo cpf   # calibra a rota de pessoa física
 npm run calibrar -- cndt --headed     # abre o navegador para você acompanhar
 ```
 
@@ -188,6 +203,7 @@ emitidaEm, validaAte, pdfUrl }`, com `situacao` entre as chaves de `SITUACOES`.
   "documento": "11.222.333/0001-81",
   "municipio": "Blumenau",
   "uf": "SC",
+  "dataNascimento": "01/01/1980",
   "certidoes": ["rfb_pgfn", "cndt"],
   "ativo": false
 }
@@ -195,6 +211,8 @@ emitidaEm, validaAte, pdfUrl }`, com `situacao` entre as chaves de `SITUACOES`.
 
 - `documento` aceita CPF ou CNPJ, com ou sem pontuação. O **CNPJ alfanumérico**
   (IN RFB 2.229/2024) é validado pela regra ASCII-48.
+- `dataNascimento` (dd/mm/aaaa) só interessa a pessoa física: alguns portais a
+  exigem na emissão. Sem ela, a consulta vira conferência manual em vez de erro.
 - `certidoes` é opcional — sem ela, valem as da raiz do arquivo.
 - `ativo: false` mantém o cliente no cadastro sem consultá-lo.
 - Certidões que não se aplicam ao tipo de documento são puladas em silêncio

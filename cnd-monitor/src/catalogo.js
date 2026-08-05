@@ -17,8 +17,7 @@ export const CATALOGO = {
     aceita: ['cnpj', 'cpf'],
     validadeDias: 180,
     provedores: ['serpro', 'infosimples', 'web', 'mock'],
-    urlManual:
-      'https://solucoes.receita.fazenda.gov.br/Servicos/certidaointernet/PJ/Emitir',
+    urlManual: 'https://servicos.receitafederal.gov.br/servico/certidoes/#/home/cnpj',
   },
 
   cadin_federal: {

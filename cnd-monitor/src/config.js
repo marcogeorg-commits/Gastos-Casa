@@ -65,6 +65,8 @@ export async function carregarConfig(caminho) {
       documentoFormatado: formatar(documento),
       tipo,
       municipio: cru.municipio ?? null,
+      // Exigida por alguns portais na emissao para pessoa fisica.
+      dataNascimento: cru.dataNascimento ?? null,
       uf: cru.uf ?? null,
       observacao: cru.observacao ?? null,
       certidoes,

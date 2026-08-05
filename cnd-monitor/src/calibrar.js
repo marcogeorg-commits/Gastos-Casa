@@ -6,6 +6,7 @@
  * diz se há captcha. Serve para preencher `src/receitas/index.js` sem adivinhar:
  *
  *   npm run calibrar -- rfb_pgfn
+ *   npm run calibrar -- rfb_pgfn --tipo cpf
  *   npm run calibrar -- cndt --headed
  *
  * Precisa rodar de uma máquina com acesso aos portais (o ambiente do agente e
@@ -72,8 +73,9 @@ export async function calibrar(idCertidao, opcoes = {}) {
 
     // Percorre todas as URLs da receita e fica na primeira que abrir: o
     // diagnóstico precisa dizer qual endereço ainda está de pé.
+    const urls = receita.urlsPara?.({ tipo: opcoes.tipo ?? 'cnpj' }) ?? receita.urls;
     let urlAberta = null;
-    for (const url of receita.urls) {
+    for (const url of urls) {
       process.stdout.write(`Abrindo ${url} ... `);
       try {
         const resposta = await pagina.goto(url, { waitUntil: 'domcontentloaded' });
@@ -117,7 +119,7 @@ export async function calibrar(idCertidao, opcoes = {}) {
     await pagina.screenshot({ path: resolve(pasta, `${idCertidao}.png`), fullPage: true });
     await writeFile(
       resolve(pasta, `${idCertidao}.json`),
-      `${JSON.stringify({ url: urlAberta, urlsTentadas: receita.urls, captcha, ...inventario }, null, 2)}\n`,
+      `${JSON.stringify({ url: urlAberta, urlsTentadas: urls, captcha, ...inventario }, null, 2)}\n`,
       'utf8',
     );
     console.log(`\nInventário e captura salvos em calibracao/${idCertidao}.*`);
@@ -132,13 +134,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const argv = process.argv.slice(2);
   const idCertidao = argv.find((a) => !a.startsWith('--'));
   const headed = argv.includes('--headed');
+  const tipo = argv[argv.indexOf('--tipo') + 1];
 
   if (!idCertidao) {
     console.error(`Uso: npm run calibrar -- <certidao>\nDisponíveis: ${IDS_RECEITAS.join(', ')}`);
     process.exit(1);
   }
 
-  calibrar(idCertidao, { headed }).catch((erro) => {
+  calibrar(idCertidao, { headed, tipo: argv.includes('--tipo') ? tipo : undefined }).catch((erro) => {
     console.error(`Erro: ${erro.message}`);
     process.exit(1);
   });

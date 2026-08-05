@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { interpretarTexto } from '../src/situacao.js';
-import { detectarCaptcha, primeiroSeletorPresente } from '../src/provedores/web.js';
+import { detectarCaptcha, esperarSeletor, primeiroSeletorPresente } from '../src/provedores/web.js';
 import { receitaFormulario } from '../src/receitas/index.js';
 
 test('irregular nao pode ser lido como negativa', () => {
@@ -69,6 +69,39 @@ describe('automação com navegador', async () => {
     await pagina.setContent('<input name="NI">');
     assert.equal(await primeiroSeletorPresente(pagina, ['#NI', 'input[name="NI"]']), 'input[name="NI"]');
     assert.equal(await primeiroSeletorPresente(pagina, ['#nada']), null);
+  });
+
+  test('espera o formulário que o SPA só renderiza depois', async (t) => {
+    if (!navegador) return t.skip('Playwright/Chromium indisponível');
+
+    // O portal da Receita é um SPA: quando o goto retorna, o campo ainda não
+    // existe. A sondagem instantânea daria falso negativo.
+    await pagina.setContent(`
+      <div id="app"></div>
+      <script>
+        setTimeout(() => {
+          document.getElementById('app').innerHTML =
+            '<input formcontrolname="cnpj">';
+        }, 600);
+      </script>`);
+
+    assert.equal(
+      await primeiroSeletorPresente(pagina, ['input[formcontrolname="cnpj"]']),
+      null,
+      'sondagem instantânea não enxerga o campo ainda não renderizado',
+    );
+    assert.equal(
+      await esperarSeletor(pagina, ['input[formcontrolname="cnpj"]'], 5000),
+      'input[formcontrolname="cnpj"]',
+      'a espera enxerga',
+    );
+  });
+
+  test('esperarSeletor desiste dentro do prazo quando nada aparece', async (t) => {
+    if (!navegador) return t.skip('Playwright/Chromium indisponível');
+
+    await pagina.setContent('<p>sem formulário</p>');
+    assert.equal(await esperarSeletor(pagina, ['#nunca'], 400), null);
   });
 
   test('preenche o formulário e extrai situação, validade e controle', async (t) => {
@@ -166,10 +199,11 @@ describe('automação com navegador', async () => {
   });
 });
 
-test('impedimento da receita explica por que não automatiza', async () => {
+test('a rota do portal da Receita segue o tipo do documento', async () => {
   const { RECEITAS } = await import('../src/receitas/index.js');
-  const motivo = RECEITAS.rfb_pgfn.impedimento({ tipo: 'cpf' });
 
-  assert.match(motivo, /data de nascimento/);
-  assert.equal(RECEITAS.rfb_pgfn.impedimento({ tipo: 'cnpj' }), null);
+  assert.match(RECEITAS.rfb_pgfn.urlsPara({ tipo: 'cnpj' })[0], /#\/home\/cnpj$/);
+  assert.match(RECEITAS.rfb_pgfn.urlsPara({ tipo: 'cpf' })[0], /#\/home\/cpf$/);
+  // Portais sem rota por tipo continuam com a lista simples.
+  assert.deepEqual(RECEITAS.cndt.urlsPara({ tipo: 'cnpj' }), RECEITAS.cndt.urls);
 });

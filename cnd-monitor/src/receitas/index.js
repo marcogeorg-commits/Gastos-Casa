@@ -23,24 +23,33 @@ const REGEX_CONTROLE = /c[óo]digo\s+de\s+controle[:\s]+([A-Z0-9.\-]{6,})/i;
  * Todo portal de certidão pública segue essa mesma forma.
  */
 export function receitaFormulario(config) {
-  const urls = config.urls ?? [config.url];
+  const urlsPadrao = config.urls ?? (config.url ? [config.url] : []);
 
   return {
     id: config.id,
     nome: config.nome,
-    url: urls[0],
-    urls,
+    url: urlsPadrao[0] ?? Object.values(config.urlsPorTipo ?? {})[0],
+    urls: urlsPadrao,
+    urlsPorTipo: config.urlsPorTipo,
     seletores: config.seletores,
     impedimento: config.impedimento,
 
-    async executar({ pagina, cliente, primeiroSeletorPresente }) {
-      const { campoDocumento, botaoEnviar, alvoResultado } = config.seletores;
+    /** URLs candidatas para este cliente — o portal pode ter rota por tipo. */
+    urlsPara(cliente) {
+      const porTipo = config.urlsPorTipo?.[cliente?.tipo];
+      return porTipo ? [porTipo, ...urlsPadrao] : urlsPadrao;
+    },
 
-      const campo = await primeiroSeletorPresente(pagina, campoDocumento);
+    async executar({ pagina, cliente, primeiroSeletorPresente, esperarSeletor }) {
+      // Sem `esperarSeletor` (chamada direta em teste) cai na sondagem simples.
+      const esperar = esperarSeletor ?? primeiroSeletorPresente;
+      const { campoDocumento, campoNascimento, botaoEnviar, alvoResultado } = config.seletores;
+
+      const campo = await esperar(pagina, campoDocumento);
       if (!campo) {
         return {
           situacao: 'erro',
-          detalhe: `Campo do documento não encontrado em ${urls[0]}. Rode "npm run calibrar -- ${config.id}" e atualize os seletores.`,
+          detalhe: `Campo do documento não encontrado. Rode "npm run calibrar -- ${config.id}" e atualize os seletores.`,
         };
       }
 
@@ -50,20 +59,32 @@ export function receitaFormulario(config) {
           : cliente.documento;
       await pagina.fill(campo, valor);
 
-      const botao = await primeiroSeletorPresente(pagina, botaoEnviar);
+      // A emissão para pessoa física costuma pedir a data de nascimento. Se o
+      // portal pede e o cadastro não tem, é conferência manual — não se chuta.
+      const nascimento = await primeiroSeletorPresente(pagina, campoNascimento ?? []);
+      if (nascimento) {
+        if (!cliente.dataNascimento) {
+          return {
+            situacao: 'manual',
+            detalhe:
+              'O portal pede a data de nascimento e ela não está no cadastro. Acrescente "dataNascimento" ao cliente em clientes.json.',
+          };
+        }
+        await pagina.fill(nascimento, cliente.dataNascimento);
+      }
+
+      const botao = await esperar(pagina, botaoEnviar);
       if (!botao) {
         return {
           situacao: 'erro',
-          detalhe: `Botão de envio não encontrado em ${urls[0]}. Rode "npm run calibrar -- ${config.id}".`,
+          detalhe: `Botão de envio não encontrado. Rode "npm run calibrar -- ${config.id}".`,
         };
       }
 
-      await Promise.all([
-        pagina.waitForLoadState('networkidle').catch(() => {}),
-        pagina.click(botao),
-      ]);
+      await pagina.click(botao);
+      await pagina.waitForLoadState('networkidle').catch(() => {});
 
-      const alvo = await primeiroSeletorPresente(pagina, alvoResultado ?? []);
+      const alvo = await esperar(pagina, alvoResultado ?? []);
       const texto = alvo ? await pagina.textContent(alvo) : await pagina.textContent('body');
 
       const situacao = interpretarTexto(texto);
@@ -84,26 +105,39 @@ export function receitaFormulario(config) {
   };
 }
 
+/**
+ * Portal de certidões da Receita: SPA Angular com rota em hash por tipo de
+ * sujeito. Além de CNPJ e CPF existem `#/home/cib` (imóveis rurais) e
+ * `#/home/cno` (obra de construção civil) — o cadastro ainda não modela esses
+ * dois, porque usam identificador próprio, não CPF/CNPJ.
+ */
+const PORTAL_RFB = 'https://servicos.receitafederal.gov.br/servico/certidoes/#/home';
+
 export const RECEITAS = {
   rfb_pgfn: receitaFormulario({
     id: 'rfb_pgfn',
     nome: 'CND Federal (RFB/PGFN)',
-    // O caminho da emissão muda entre PJ e PF; a receita usa o de PJ e recusa
-    // CPF, porque a emissão para pessoa física pede também a data de nascimento.
-    urls: [
-      'https://solucoes.receita.fazenda.gov.br/Servicos/certidaointernet/PJ/Emitir',
-      'https://servicos.receitafederal.gov.br/servico/certidoes/',
-    ],
-    formatoDocumento: 'digitos',
-    seletores: {
-      campoDocumento: ['#NI', 'input[name="NI"]', '#txtCNPJ', 'input[name="cnpj"]'],
-      botaoEnviar: ['#validar', 'input[type="submit"]', 'button[type="submit"]'],
-      alvoResultado: ['#idResultado', '.certidao', 'main'],
+    urlsPorTipo: {
+      cnpj: `${PORTAL_RFB}/cnpj`,
+      cpf: `${PORTAL_RFB}/cpf`,
     },
-    impedimento: (cliente) =>
-      cliente.tipo === 'cpf'
-        ? 'A emissão para pessoa física exige a data de nascimento, que não está no cadastro. Consulte no portal ou use um provedor de API.'
-        : null,
+    urls: [PORTAL_RFB],
+    formatoDocumento: 'formatado',
+    seletores: {
+      campoDocumento: [
+        'input[formcontrolname="cnpj"]',
+        'input[formcontrolname="cpf"]',
+        'input[name="NI"]',
+        '#NI',
+        'input[type="text"]',
+      ],
+      campoNascimento: [
+        'input[formcontrolname="dataNascimento"]',
+        'input[name="dataNascimento"]',
+      ],
+      botaoEnviar: ['button[type="submit"]', 'button:has-text("Consultar")', '#validar'],
+      alvoResultado: ['.resultado', '#idResultado', 'main', 'body'],
+    },
   }),
 
   cndt: receitaFormulario({
@@ -122,6 +156,7 @@ export const RECEITAS = {
     id: 'fgts_crf',
     nome: 'CRF do FGTS (Caixa)',
     urls: ['https://consulta-crf.caixa.gov.br/consultacrf/pages/consultaEmpregador.jsf'],
+    // A própria página instrui: inscrição somente números, UF em branco.
     formatoDocumento: 'digitos',
     seletores: {
       campoDocumento: ['#mainForm\\:txtInscricao1', 'input[name*="txtInscricao"]'],
