@@ -16,36 +16,85 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { IDS_RECEITAS, RECEITAS } from './receitas/index.js';
-import { detectarCaptcha, primeiroSeletorPresente } from './provedores/web.js';
+import { detectarCaptcha, esperarSeletor } from './provedores/web.js';
 
 const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-/** Inventário dos controles interativos da página, como o DOM realmente está. */
-async function inventariar(pagina) {
+const ESPERA_APP = 30_000;
+
+/**
+ * Espera o app renderizar algum controle.
+ *
+ * Sem isso o inventário fotografa a página no instante do `goto` -- num SPA,
+ * antes de existir formulário -- e conclui, errado, que o portal não tem campo
+ * nenhum. Usa locator (que atravessa shadow DOM) em vez de querySelector.
+ */
+export async function esperarApp(pagina, tempoLimite = ESPERA_APP) {
+  await pagina.waitForLoadState('networkidle').catch(() => {});
+  try {
+    await pagina
+      .locator('input:not([type=hidden]), select, textarea, button')
+      .first()
+      .waitFor({ state: 'attached', timeout: tempoLimite });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Inventário dos controles interativos, atravessando shadow DOM.
+ *
+ * `document.querySelectorAll` não enxerga dentro de shadow roots; componentes do
+ * design system do gov.br podem usá-los. Um campo invisível ao inventário mas
+ * visível ao Playwright levaria a diagnóstico errado.
+ */
+export async function inventariar(pagina) {
   return pagina.evaluate(() => {
     const descrever = (el) => ({
       tag: el.tagName.toLowerCase(),
       type: el.getAttribute('type'),
       id: el.id || null,
       name: el.getAttribute('name'),
+      formcontrolname: el.getAttribute('formcontrolname'),
       placeholder: el.getAttribute('placeholder'),
+      aria: el.getAttribute('aria-label'),
       texto: (el.innerText || el.value || '').trim().slice(0, 60) || null,
       seletor: el.id
         ? `#${CSS.escape(el.id)}`
-        : el.getAttribute('name')
-          ? `${el.tagName.toLowerCase()}[name="${el.getAttribute('name')}"]`
-          : null,
+        : el.getAttribute('formcontrolname')
+          ? `${el.tagName.toLowerCase()}[formcontrolname="${el.getAttribute('formcontrolname')}"]`
+          : el.getAttribute('name')
+            ? `${el.tagName.toLowerCase()}[name="${el.getAttribute('name')}"]`
+            : null,
     });
+
+    const campos = [];
+    const botoes = [];
+    const tagsCustomizadas = new Set();
+
+    const percorrer = (raiz) => {
+      for (const el of raiz.querySelectorAll('*')) {
+        if (el.tagName.includes('-')) tagsCustomizadas.add(el.tagName.toLowerCase());
+        if (el.matches('input, select, textarea') && el.type !== 'hidden') {
+          campos.push(descrever(el));
+        }
+        if (el.matches('button, input[type=submit], a[role=button]')) botoes.push(descrever(el));
+        if (el.shadowRoot) percorrer(el.shadowRoot);
+      }
+    };
+    percorrer(document);
 
     return {
       titulo: document.title,
-      campos: [...document.querySelectorAll('input, select, textarea')]
-        .filter((el) => el.type !== 'hidden')
-        .map(descrever),
-      botoes: [...document.querySelectorAll('button, input[type=submit], a[role=button]')].map(
-        descrever,
-      ),
+      campos,
+      botoes,
+      tagsCustomizadas: [...tagsCustomizadas],
       iframes: [...document.querySelectorAll('iframe')].map((el) => el.src),
+      // Fallback de diagnóstico: se nada foi encontrado, o texto da página diz
+      // se caiu numa tela de erro, de manutenção ou de login.
+      textoVisivel: (document.body?.innerText ?? '').replace(/\s+/g, ' ').trim().slice(0, 600),
+      html: document.documentElement.outerHTML.length,
     };
   });
 }
@@ -91,6 +140,10 @@ export async function calibrar(idCertidao, opcoes = {}) {
       throw new Error('Nenhuma URL da receita abriu a partir desta máquina.');
     }
 
+    process.stdout.write('Esperando o app renderizar ... ');
+    const renderizou = await esperarApp(pagina);
+    console.log(renderizou ? 'ok' : `nada apareceu em ${ESPERA_APP / 1000}s`);
+
     const captcha = await detectarCaptcha(pagina);
     const inventario = await inventariar(pagina);
 
@@ -98,19 +151,34 @@ export async function calibrar(idCertidao, opcoes = {}) {
     console.log(`Título: ${inventario.titulo}`);
     console.log(captcha ? `Captcha detectado: ${captcha}` : 'Sem captcha aparente.');
 
-    console.log('\nCampos:');
+    console.log(`\nCampos (${inventario.campos.length}):`);
     for (const c of inventario.campos) {
-      console.log(`  ${c.seletor ?? '(sem id/name)'}  ${c.type ?? c.tag}  ${c.placeholder ?? ''}`);
+      const rotulo = c.placeholder ?? c.aria ?? '';
+      console.log(`  ${c.seletor ?? '(sem id/name)'}  ${c.type ?? c.tag}  ${rotulo}`);
     }
 
-    console.log('\nBotões:');
+    console.log(`\nBotões (${inventario.botoes.length}):`);
     for (const b of inventario.botoes) {
       console.log(`  ${b.seletor ?? '(sem id/name)'}  "${b.texto ?? ''}"`);
     }
 
+    if (inventario.tagsCustomizadas.length > 0) {
+      console.log(`\nComponentes: ${inventario.tagsCustomizadas.slice(0, 20).join(', ')}`);
+    }
+    if (inventario.iframes.length > 0) {
+      console.log(`\nIframes: ${inventario.iframes.join(', ')}`);
+    }
+
+    // Sem controle nenhum, o texto da página é o que explica o porquê.
+    if (inventario.campos.length === 0 && inventario.botoes.length === 0) {
+      console.log(`\nA página não expôs controles. Texto visível:\n  ${inventario.textoVisivel}`);
+      console.log(`  (HTML com ${inventario.html} caracteres)`);
+    }
+
     console.log('\nSeletores da receita atual:');
     for (const [papel, candidatos] of Object.entries(receita.seletores)) {
-      const encontrado = await primeiroSeletorPresente(pagina, candidatos);
+      // Espera curta: o elemento pode aparecer depois do primeiro render.
+      const encontrado = await esperarSeletor(pagina, candidatos, 3000);
       console.log(`  ${papel}: ${encontrado ? `OK → ${encontrado}` : 'NENHUM candidato casou'}`);
     }
 

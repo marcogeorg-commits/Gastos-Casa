@@ -228,3 +228,80 @@ test('a rota do portal da Receita segue o tipo do documento', async () => {
   // Portais sem rota por tipo continuam com a lista simples.
   assert.deepEqual(RECEITAS.cndt.urlsPara({ tipo: 'cnpj' }), RECEITAS.cndt.urls);
 });
+
+/**
+ * O inventário da calibração precisa enxergar o que o Playwright enxerga.
+ * Um SPA renderiza tarde e pode montar campos dentro de shadow DOM -- se o
+ * inventário perder qualquer um dos dois casos, o diagnóstico diz "portal sem
+ * campos" e manda caçar o problema no lugar errado.
+ */
+describe('inventário da calibração', async () => {
+  let navegador;
+  let pagina;
+
+  before(async () => {
+    try {
+      const { chromium } = await import('playwright');
+      navegador = await chromium.launch({
+        ...(process.env.PLAYWRIGHT_EXECUTABLE_PATH
+          ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH }
+          : {}),
+        args: ['--no-sandbox'],
+      });
+      pagina = await navegador.newPage();
+    } catch {
+      navegador = null;
+    }
+  });
+
+  after(async () => {
+    await navegador?.close().catch(() => {});
+  });
+
+  test('enxerga campos renderizados tarde e dentro de shadow DOM', async (t) => {
+    if (!navegador) return t.skip('Playwright/Chromium indisponível');
+
+    const { esperarApp, inventariar } = await import('../src/calibrar.js');
+
+    await pagina.setContent(`
+      <div id="app"></div>
+      <div id="hospedeiro"></div>
+      <script>
+        setTimeout(() => {
+          document.getElementById('app').innerHTML =
+            '<input formcontrolname="cnpj" placeholder="Informe o CNPJ">' +
+            '<button type="submit">Consultar</button>';
+          const sombra = document.getElementById('hospedeiro').attachShadow({ mode: 'open' });
+          sombra.innerHTML = '<input id="dentroDaSombra">';
+        }, 500);
+      </script>`);
+
+    assert.equal(await esperarApp(pagina, 8000), true);
+
+    const inventario = await inventariar(pagina);
+    const seletores = inventario.campos.map((c) => c.seletor);
+
+    assert.ok(
+      seletores.includes('input[formcontrolname="cnpj"]'),
+      `campo renderizado tarde não foi visto: ${JSON.stringify(seletores)}`,
+    );
+    assert.ok(
+      seletores.includes('#dentroDaSombra'),
+      `campo em shadow DOM não foi visto: ${JSON.stringify(seletores)}`,
+    );
+    assert.equal(inventario.botoes.length, 1);
+  });
+
+  test('sem controle nenhum, devolve o texto da página para diagnóstico', async (t) => {
+    if (!navegador) return t.skip('Playwright/Chromium indisponível');
+
+    const { esperarApp, inventariar } = await import('../src/calibrar.js');
+
+    await pagina.setContent('<p>Serviço temporariamente indisponível</p>');
+    assert.equal(await esperarApp(pagina, 800), false);
+
+    const inventario = await inventariar(pagina);
+    assert.equal(inventario.campos.length, 0);
+    assert.match(inventario.textoVisivel, /temporariamente indisponível/);
+  });
+});
