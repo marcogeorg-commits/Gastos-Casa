@@ -41,81 +41,104 @@ export function receitaFormulario(config) {
       return porTipo ? [porTipo, ...urlsPadrao] : urlsPadrao;
     },
 
-    async executar({ pagina, cliente, primeiroSeletorPresente, esperarSeletor }) {
-      // Sem `esperarSeletor` (chamada direta em teste) cai na sondagem simples.
-      const esperar = esperarSeletor ?? primeiroSeletorPresente;
-      const { campoDocumento, campoNascimento, botaoEnviar, alvoResultado } = config.seletores;
+    async executar(argumentos) {
+      const { pagina, dormir, env = {} } = argumentos;
 
-      // Barras de cookie e modais de aviso cobrem o formulário e engolem o
-      // clique. Cada passo é opcional: se não estiver na tela, segue adiante.
-      for (const passo of config.preparacao ?? []) {
-        const alvo = await primeiroSeletorPresente(pagina, passo.candidatos);
-        if (alvo) await pagina.click(alvo, { timeout: 5000 }).catch(() => {});
+      // O portal responde "tente novamente dentro de alguns minutos" (erro 023)
+      // em falhas passageiras. Desistir na primeira faria uma empresa regular
+      // aparecer como pendência só porque o sistema piscou.
+      const tentativas = Number(env.WEB_TENTATIVAS_PORTAL ?? config.tentativasPortal ?? 3);
+      const espera = Number(env.WEB_ESPERA_PORTAL ?? 30_000);
+      const aguardar = dormir ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+
+      let resultado;
+      for (let tentativa = 1; tentativa <= tentativas; tentativa += 1) {
+        resultado = await umaTentativa(config, argumentos);
+
+        if (resultado.situacao !== 'indisponivel' || tentativa === tentativas) break;
+
+        await aguardar(espera);
+        await pagina.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
       }
 
-      const campo = await esperar(pagina, campoDocumento);
-      if (!campo) {
-        return {
-          situacao: 'erro',
-          detalhe: `Campo do documento não encontrado. Rode "npm run calibrar -- ${config.id}" e atualize os seletores.`,
-        };
+      if (resultado.situacao === 'indisponivel' && tentativas > 1) {
+        resultado.detalhe = `${resultado.detalhe} (após ${tentativas} tentativas)`;
       }
-
-      const valor =
-        config.formatoDocumento === 'formatado'
-          ? formatar(cliente.documento)
-          : cliente.documento;
-      await pagina.fill(campo, valor);
-
-      // A emissão para pessoa física costuma pedir a data de nascimento. Se o
-      // portal pede e o cadastro não tem, é conferência manual — não se chuta.
-      const nascimento = await primeiroSeletorPresente(pagina, campoNascimento ?? []);
-      if (nascimento) {
-        if (!cliente.dataNascimento) {
-          return {
-            situacao: 'manual',
-            detalhe:
-              'O portal pede a data de nascimento e ela não está no cadastro. Acrescente "dataNascimento" ao cliente em clientes.json.',
-          };
-        }
-        await pagina.fill(nascimento, cliente.dataNascimento);
-      }
-
-      const botao = await esperar(pagina, botaoEnviar);
-      if (!botao) {
-        return {
-          situacao: 'erro',
-          detalhe: `Botão de envio não encontrado. Rode "npm run calibrar -- ${config.id}".`,
-        };
-      }
-
-      await pagina.click(botao);
-
-      // Num SPA nao ha navegacao: o sinal confiavel de que a consulta terminou
-      // e a rota mudar para a tela de resultado.
-      if (config.urlResultado) {
-        await pagina.waitForURL(config.urlResultado, { timeout: 45_000 }).catch(() => {});
-      }
-      await pagina.waitForLoadState('networkidle').catch(() => {});
-
-      const alvo = await esperar(pagina, alvoResultado ?? []);
-      const texto = alvo ? await pagina.textContent(alvo) : await pagina.textContent('body');
-
-      const situacao = interpretarTexto(texto);
-      if (!situacao) {
-        return {
-          situacao: 'erro',
-          detalhe: `Resposta não reconhecida: "${String(texto ?? '').replace(/\s+/g, ' ').trim().slice(0, 180)}"`,
-        };
-      }
-
-      return {
-        situacao,
-        detalhe: String(texto ?? '').replace(/\s+/g, ' ').trim().slice(0, 240),
-        numeroCertidao: texto?.match(REGEX_CONTROLE)?.[1] ?? null,
-        validaAte: texto?.match(REGEX_VALIDADE)?.[1] ?? null,
-      };
+      return resultado;
     },
+  };
+}
+
+/** Uma passada pelo formulário: preenche, envia e lê o que voltou. */
+async function umaTentativa(config, { pagina, cliente, primeiroSeletorPresente, esperarSeletor }) {
+  // Sem `esperarSeletor` (chamada direta em teste) cai na sondagem simples.
+  const esperar = esperarSeletor ?? primeiroSeletorPresente;
+  const { campoDocumento, campoNascimento, botaoEnviar, alvoResultado } = config.seletores;
+
+  // Barras de cookie e modais de aviso cobrem o formulário e engolem o
+  // clique. Cada passo é opcional: se não estiver na tela, segue adiante.
+  for (const passo of config.preparacao ?? []) {
+    const alvo = await primeiroSeletorPresente(pagina, passo.candidatos);
+    if (alvo) await pagina.click(alvo, { timeout: 5000 }).catch(() => {});
+  }
+
+  const campo = await esperar(pagina, campoDocumento);
+  if (!campo) {
+    return {
+      situacao: 'erro',
+      detalhe: `Campo do documento não encontrado. Rode "npm run calibrar -- ${config.id}" e atualize os seletores.`,
+    };
+  }
+
+  const valor =
+    config.formatoDocumento === 'formatado' ? formatar(cliente.documento) : cliente.documento;
+  await pagina.fill(campo, valor);
+
+  // A emissão para pessoa física costuma pedir a data de nascimento. Se o
+  // portal pede e o cadastro não tem, é conferência manual — não se chuta.
+  const nascimento = await primeiroSeletorPresente(pagina, campoNascimento ?? []);
+  if (nascimento) {
+    if (!cliente.dataNascimento) {
+      return {
+        situacao: 'manual',
+        detalhe:
+          'O portal pede a data de nascimento e ela não está no cadastro. Acrescente "dataNascimento" ao cliente em clientes.json.',
+      };
+    }
+    await pagina.fill(nascimento, cliente.dataNascimento);
+  }
+
+  const botao = await esperar(pagina, botaoEnviar);
+  if (!botao) {
+    return {
+      situacao: 'erro',
+      detalhe: `Botão de envio não encontrado. Rode "npm run calibrar -- ${config.id}".`,
+    };
+  }
+
+  await pagina.click(botao);
+
+  // Num SPA nao ha navegacao: o sinal confiavel de que a consulta terminou e a
+  // rota mudar para a tela de resultado.
+  if (config.urlResultado) {
+    await pagina.waitForURL(config.urlResultado, { timeout: 45_000 }).catch(() => {});
+  }
+  await pagina.waitForLoadState('networkidle').catch(() => {});
+
+  const alvo = await esperar(pagina, alvoResultado ?? []);
+  const texto = alvo ? await pagina.textContent(alvo) : await pagina.textContent('body');
+  const limpo = String(texto ?? '').replace(/\s+/g, ' ').trim();
+
+  const situacao = interpretarTexto(limpo);
+  if (!situacao) {
+    return { situacao: 'erro', detalhe: `Resposta não reconhecida: "${limpo.slice(0, 180)}"` };
+  }
+
+  return {
+    situacao,
+    detalhe: limpo.slice(0, 240),
+    numeroCertidao: limpo.match(REGEX_CONTROLE)?.[1] ?? null,
+    validaAte: limpo.match(REGEX_VALIDADE)?.[1] ?? null,
   };
 }
 

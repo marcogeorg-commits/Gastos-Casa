@@ -145,6 +145,17 @@ export const SITUACOES = {
     status: 'neutro',
     pendencia: false,
   },
+  // O portal respondeu que nao conseguiu concluir agora ("tente novamente
+  // dentro de alguns minutos"). Nao e informacao sobre o cliente: e o sistema
+  // fora do ar. Conta como pendencia porque a certidao continua faltando, mas
+  // com rotulo proprio -- tratar como debito acusaria quem esta regular.
+  indisponivel: {
+    rotulo: 'Portal indisponível no momento',
+    curto: 'Indisponível',
+    icone: '▲',
+    status: 'serious',
+    pendencia: true,
+  },
   erro: {
     rotulo: 'Falha na consulta',
     curto: 'Falha',

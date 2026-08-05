@@ -241,6 +241,7 @@ export async function consultar({ cliente, idCertidao, env = process.env }) {
         cliente,
         primeiroSeletorPresente,
         esperarSeletor,
+        env,
       });
 
       // Captcha invisivel nao impede a tentativa, mas explica um fracasso: sem

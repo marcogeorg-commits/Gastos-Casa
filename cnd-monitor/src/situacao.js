@@ -17,6 +17,22 @@ export function interpretarTexto(texto) {
   const t = semAcento(texto);
   if (!t) return null;
 
+  // Falha temporária do portal: "Não foi possível concluir a ação para o
+  // contribuinte informado. Por favor, tente novamente dentro de alguns
+  // minutos. 023". Não diz nada sobre o cliente -- diz que o sistema não
+  // respondeu. Confundir isso com pendência colocaria em vermelho quem está
+  // regular, e vem antes das outras regras porque a frase não tem nenhuma das
+  // palavras-chave usuais.
+  if (
+    t.includes('tente novamente') ||
+    t.includes('nao foi possivel concluir') ||
+    t.includes('sistema indisponivel') ||
+    t.includes('servico indisponivel') ||
+    t.includes('em manutencao')
+  ) {
+    return 'indisponivel';
+  }
+
   // Desfecho comum no portal da Receita: "As informações disponíveis (...) são
   // insuficientes para emitir a certidão pela Internet". Não é negativa nem
   // positiva -- exige atendimento presencial ou e-CAC, e por isso vem antes de

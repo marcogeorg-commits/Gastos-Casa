@@ -22,7 +22,7 @@ test('classifica os textos que os portais realmente usam', () => {
     'positiva_com_efeito_negativo',
   );
   assert.equal(interpretarTexto('Constam pendências'), 'positiva');
-  assert.equal(interpretarTexto('página em manutenção'), null);
+  assert.equal(interpretarTexto('texto sem relação alguma'), null);
 });
 
 test('"informações insuficientes" é o portal dizendo que não há CND', () => {
@@ -284,6 +284,9 @@ describe('automação com navegador', async () => {
       id: 'fixture',
       nome: 'Portal de teste',
       url: 'about:blank',
+      // Sem retentativa: aqui o alvo é a resposta desconhecida, não o portal
+      // instável — insistir só embaralharia o que está sendo verificado.
+      tentativasPortal: 1,
       seletores: {
         campoDocumento: ['#NI'],
         botaoEnviar: ['#validar'],
@@ -292,12 +295,13 @@ describe('automação com navegador', async () => {
     });
 
     await pagina.setContent(
-      `<input id="NI"><button id="validar"></button><div id="saida">Sistema em manutenção</div>`,
+      `<input id="NI"><button id="validar"></button><div id="saida">Bem-vindo ao portal</div>`,
     );
     const resultado = await receita.executar({
       pagina,
       cliente: { documento: '11222333000181', tipo: 'cnpj' },
       primeiroSeletorPresente,
+      esperarSeletor,
     });
 
     assert.equal(resultado.situacao, 'erro');
@@ -388,5 +392,119 @@ describe('inventário da calibração', async () => {
     const inventario = await inventariar(pagina);
     assert.equal(inventario.campos.length, 0);
     assert.match(inventario.textoVisivel, /temporariamente indisponível/);
+  });
+});
+
+test('"tente novamente em alguns minutos" é o portal fora do ar, não pendência', () => {
+  // Texto exato do portal da Receita (erro 023). Sem tratamento próprio, cairia
+  // em "resposta não reconhecida" — e uma empresa regular apareceria com
+  // problema só porque o sistema piscou.
+  const texto =
+    'Não foi possível concluir a ação para o contribuinte informado. ' +
+    'Por favor, tente novamente dentro de alguns minutos. 023 - 05/08/2026 15:54:23';
+
+  assert.equal(interpretarTexto(texto), 'indisponivel');
+  assert.equal(interpretarTexto('Sistema indisponível'), 'indisponivel');
+  assert.equal(interpretarTexto('Serviço em manutenção'), 'indisponivel');
+});
+
+test('indisponível é falha de sistema, não débito do cliente', async () => {
+  const { descreverSituacao } = await import('../src/catalogo.js');
+  const indisponivel = descreverSituacao('indisponivel');
+  const debito = descreverSituacao('positiva');
+
+  assert.equal(indisponivel.pendencia, true, 'a certidão continua faltando');
+  assert.notEqual(indisponivel.status, debito.status, 'não pode parecer débito');
+  assert.match(indisponivel.rotulo, /indisponível/i);
+});
+
+describe('retentativa quando o portal pisca', async () => {
+  let navegador;
+  let pagina;
+
+  before(async () => {
+    try {
+      const { chromium } = await import('playwright');
+      navegador = await chromium.launch({
+        ...(process.env.PLAYWRIGHT_EXECUTABLE_PATH
+          ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH }
+          : {}),
+        args: ['--no-sandbox'],
+      });
+      pagina = await navegador.newPage();
+    } catch {
+      navegador = null;
+    }
+  });
+
+  after(async () => {
+    await navegador?.close().catch(() => {});
+  });
+
+  /** Portal que falha nas primeiras `falhas` tentativas e depois responde. */
+  async function portalInstavel(falhas) {
+    const pasta = await mkdtemp(join(tmpdir(), 'instavel-'));
+    const arquivo = join(pasta, 'portal.html');
+    await writeFile(
+      arquivo,
+      `<!doctype html><meta charset="utf-8">
+       <input id="NI"><button id="ir">Consultar</button><div id="saida"></div>
+       <script>
+         const chave = 'tentativas';
+         document.getElementById('ir').onclick = () => {
+           const n = Number(sessionStorage.getItem(chave) ?? 0) + 1;
+           sessionStorage.setItem(chave, String(n));
+           document.getElementById('saida').textContent = n <= ${falhas}
+             ? 'Não foi possível concluir a ação para o contribuinte informado. Por favor, tente novamente dentro de alguns minutos. 023'
+             : 'Certidão Negativa de Débitos';
+         };
+       </script>`,
+      'utf8',
+    );
+    return `file://${arquivo}`;
+  }
+
+  const receitaTeste = (tentativasPortal) =>
+    receitaFormulario({
+      id: 'fixture',
+      nome: 'Portal instável',
+      url: 'about:blank',
+      tentativasPortal,
+      seletores: {
+        campoDocumento: ['#NI'],
+        botaoEnviar: ['#ir'],
+        alvoResultado: ['#saida'],
+      },
+    });
+
+  test('insiste e aceita a resposta que vem depois do soluço', async (t) => {
+    if (!navegador) return t.skip('Playwright/Chromium indisponível');
+
+    await pagina.goto(await portalInstavel(1));
+    const resultado = await receitaTeste(3).executar({
+      pagina,
+      cliente: { documento: '11222333000181', tipo: 'cnpj' },
+      primeiroSeletorPresente,
+      esperarSeletor,
+      dormir: async () => {}, // sem espera real no teste
+    });
+
+    assert.equal(resultado.situacao, 'negativa');
+  });
+
+  test('portal insistentemente fora do ar vira indisponível, não débito', async (t) => {
+    if (!navegador) return t.skip('Playwright/Chromium indisponível');
+
+    await pagina.goto(await portalInstavel(99));
+    const resultado = await receitaTeste(2).executar({
+      pagina,
+      cliente: { documento: '11222333000181', tipo: 'cnpj' },
+      primeiroSeletorPresente,
+      esperarSeletor,
+      dormir: async () => {},
+    });
+
+    assert.equal(resultado.situacao, 'indisponivel');
+    assert.match(resultado.detalhe, /após 2 tentativas/);
   });
 });

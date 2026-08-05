@@ -188,12 +188,14 @@ não funciona — o portal da Receita monta vários iframes do hCaptcha, e basta
 primeiro não trazer a marca para o invisível ser classificado como visível e a
 consulta ser recusada sem nem tentar.
 
-O portal da Receita usa **hCaptcha invisível** (confirmado na calibração), então
-a rota gratuita é tentada — mas só o uso real dirá se ele deixa passar.
+O portal da Receita usa **hCaptcha invisível**, e em consulta real ele **deixou
+a automação passar**: o formulário foi preenchido e enviado normalmente. Não há
+garantia de que siga assim — o escore do hCaptcha pode mudar de comportamento a
+qualquer momento, e é isso que se compra ao contratar uma API.
 
 | Certidão | Expectativa no `web` |
 |---|---|
-| CND Federal (PJ) | consulta pública, só CNPJ; hCaptcha **invisível** — tenta e reporta se barrar |
+| CND Federal (PJ) | **funciona**: o hCaptcha invisível não barrou em consulta real |
 | CND Federal (PF) | funciona se o cadastro tiver `dataNascimento`; sem ela, vira conferência manual |
 | CRF do FGTS, CNDT, SEFAZ/SC | historicamente com captcha — a calibração confirma |
 
@@ -212,6 +214,19 @@ provedor **espera** o campo aparecer em vez de sondar uma vez só. Sondagem
 instantânea daria "campo não encontrado" mesmo com a URL certa. E como não há
 navegação de página, o sinal de que a consulta terminou é a rota virar
 `#/home/<tipo>/resultado`.
+
+#### O portal pisca: erro 023
+
+Em consulta real o portal respondeu:
+
+> Não foi possível concluir a ação para o contribuinte informado. Por favor,
+> tente novamente dentro de alguns minutos. **023**
+
+Isso não é informação sobre o cliente — é o sistema fora do ar. A rotina
+reconhece a mensagem, **espera e tenta de novo** (3 vezes, 30s entre elas, ajustável
+por `WEB_TENTATIVAS_PORTAL` e `WEB_ESPERA_PORTAL`). Persistindo, o resultado é
+`indisponivel`, com rótulo próprio: a certidão continua faltando, mas ninguém
+lê isso como débito de uma empresa regular.
 
 #### O desfecho "informações insuficientes"
 
