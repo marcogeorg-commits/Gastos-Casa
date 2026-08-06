@@ -287,6 +287,22 @@ function renderAvulsa() {
         <code>relatorios/</code> — o resultado não se perde quando você fecha a página.</p>
 
       <div class="cartao cartao--ar">
+        ${(estado.config?.clientes ?? []).length > 0 ? `
+        <div style="margin-bottom:16px">
+          <label class="comando__rotulo" for="avulsa-cliente" style="display:block;margin-bottom:6px">
+            Cliente da carteira
+          </label>
+          <select id="avulsa-cliente" style="min-width:320px;max-width:100%">
+            <option value="">— ou digite um documento abaixo —</option>
+            ${(estado.config.clientes ?? [])
+              .filter((c) => c.documento)
+              .map((c) => `<option value="${esc(limpar(c.documento))}"
+                ${limpar(c.documento) === limpar(avulsa.documento) ? 'selected' : ''}
+                >${esc(c.nome || formatar(c.documento))} — ${esc(formatar(c.documento))}</option>`)
+              .join('')}
+          </select>
+        </div>` : ''}
+
         <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start">
           <div style="flex:1 1 240px;max-width:320px">
             <input type="text" id="avulsa-doc" value="${esc(avulsa.documento)}"
@@ -480,6 +496,24 @@ function renderSituacao() {
 // ---------------------------------------------------------------------------
 // Aba: clientes
 // ---------------------------------------------------------------------------
+/**
+ * Estado do certificado deste cliente, numa palavra.
+ *
+ * Estava numa aba separada, em cartões: para saber se um cliente podia ser
+ * consultado era preciso trocar de tela e procurar o cartão dele. A informação
+ * pertence à linha do cliente.
+ */
+function estadoDoCertificado(cliente) {
+  const documento = limpar(cliente.documento ?? '');
+  const arquivo = cliente.certificado?.arquivo ?? estado.vinculos?.[documento];
+
+  if (!arquivo) return '<span class="selo selo--neutro"><span class="selo__icone">–</span>nenhum</span>';
+  if (estado.senhasPorDocumento?.[documento]) {
+    return `<span class="selo selo--good" title="${esc(arquivo)}"><span class="selo__icone">●</span>pronto</span>`;
+  }
+  return `<span class="selo selo--warning" title="${esc(arquivo)}"><span class="selo__icone">▲</span>falta a senha</span>`;
+}
+
 function linhaCliente(cliente, i) {
   const tipo = tipoDocumento(cliente.documento);
   const documentoOk = !cliente.documento || validar(cliente.documento);
@@ -518,8 +552,13 @@ function linhaCliente(cliente, i) {
       <td class="num"><input type="text" value="${esc(cliente.dataNascimento ?? '')}" data-campo="dataNascimento" data-i="${i}"
              placeholder="${tipo === 'cpf' ? 'dd/mm/aaaa' : '—'}" ${tipo === 'cnpj' ? 'disabled' : ''}></td>
       <td><div class="marcadores">${marcadores}</div></td>
+      <td>${estadoDoCertificado(cliente)}</td>
       <td style="text-align:center"><input type="checkbox" data-campo="ativo" data-i="${i}" ${cliente.ativo === false ? '' : 'checked'}></td>
-      <td><button class="icone" data-remover="${i}" title="Remover cliente" aria-label="Remover cliente">✕</button></td>
+      <td style="white-space:nowrap">
+        <button data-consultar="${esc(limpar(cliente.documento ?? ''))}"
+                ${validar(cliente.documento ?? '') ? '' : 'disabled'}>Consultar</button>
+        <button class="icone" data-remover="${i}" title="Remover cliente" aria-label="Remover cliente">✕</button>
+      </td>
     </tr>`;
 }
 
@@ -547,11 +586,11 @@ function renderClientes() {
         <table>
           <thead><tr>
             <th style="min-width:200px">Nome</th><th style="min-width:160px">Documento</th>
-            <th style="min-width:140px">Município</th><th style="min-width:120px">Nascimento</th>
-            <th style="min-width:340px">Certidões</th><th>Ativo</th><th></th>
+            <th style="min-width:120px">Município</th><th style="min-width:110px">Nascimento</th>
+            <th style="min-width:230px">Certidões</th><th>Certificado</th><th>Ativo</th><th></th>
           </tr></thead>
           <tbody>${clientes.map(linhaCliente).join('') ||
-            '<tr><td colspan="7" class="vazio">Nenhum cliente cadastrado.</td></tr>'}</tbody>
+            '<tr><td colspan="8" class="vazio">Nenhum cliente cadastrado. Use a aba <strong>Certificados</strong> para montar a carteira a partir dos .pfx.</td></tr>'}</tbody>
         </table>
       </div>
 
@@ -761,7 +800,8 @@ function renderCertificados() {
 
     <section>
       <h2>Por cliente</h2>
-      <div class="grade-cert">${cartoes || '<p class="vazio">Cadastre clientes primeiro.</p>'}</div>
+      <p class="ajuda">O estado do certificado de cada cliente aparece na aba
+        <strong>Clientes</strong>, na linha dele — junto do botão de consultar.</p>
     </section>`;
 }
 
@@ -1007,6 +1047,17 @@ document.addEventListener('input', (e) => {
 });
 
 document.addEventListener('change', async (e) => {
+  if (e.target.id === 'avulsa-cliente') {
+    avulsa.documento = e.target.value;
+    avulsa.certificado = '';
+    const cliente = (estado.config?.clientes ?? []).find(
+      (c) => limpar(c.documento) === e.target.value,
+    );
+    avulsa.municipio = cliente?.municipio ?? '';
+    renderAvulsa();
+    return;
+  }
+
   if (e.target.id === 'avulsa-cert') {
     avulsa.certificado = e.target.value;
     renderAvulsa();
@@ -1098,6 +1149,17 @@ document.addEventListener('click', async (e) => {
   }
 
   if (e.target.id === 'importar') { document.getElementById('arquivo').click(); return; }
+
+  const consultar = e.target.closest('[data-consultar]');
+  if (consultar) {
+    avulsa.documento = consultar.dataset.consultar;
+    avulsa.certificado = '';
+    avulsa.certidoes = null;
+    document.querySelector('.aba[data-painel="avulsa"]').click();
+    renderAvulsa();
+    await rodarAvulsa();
+    return;
+  }
 
   if (e.target.id === 'imp-ler') {
     importacao.lendo = true;

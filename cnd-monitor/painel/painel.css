@@ -94,7 +94,7 @@ button.icone:hover:not(:disabled) { color: var(--critical); border-color: var(--
 
 .marcadores { display: flex; flex-wrap: wrap; gap: 5px; }
 .marcador {
-  font-size: 11px; padding: 3px 9px; border-radius: 999px;
+  font-size: 10.5px; padding: 2px 7px; border-radius: 999px;
   border: 1px solid var(--borda); color: var(--texto-3);
   cursor: pointer; user-select: none; white-space: nowrap; transition: all 0.12s;
 }
