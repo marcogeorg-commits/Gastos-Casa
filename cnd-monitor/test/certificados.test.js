@@ -104,3 +104,27 @@ test('cliente sem certificado é recusado com explicação, não com exceção',
   const { erro } = await resolverCertificado({ nome: 'Beta Ltda' }, {}, {});
   assert.match(erro, /sem certificado digital/);
 });
+
+/**
+ * Guarda de deriva: quem resolve certificado tem que resolver do mesmo jeito.
+ *
+ * A consulta foi corrigida para honrar o vínculo escolhido pelo operador, mas a
+ * calibração ficou para trás adivinhando pelo nome do arquivo -- e falhou com
+ * "nenhum certificado com este CNPJ no nome", com 23 arquivos na pasta. O
+ * defeito não aparecia em teste nenhum porque cada caminho era testado
+ * isoladamente e os dois "funcionavam".
+ */
+test('a calibração resolve o certificado como a consulta, não pelo nome do arquivo', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { resolve } = await import('node:path');
+
+  const fonte = await readFile(resolve(import.meta.dirname, '../src/calibrar.js'), 'utf8');
+
+  assert.match(fonte, /escolherCertificado/, 'deve usar a escolha do operador');
+  assert.match(fonte, /lerVinculos/, 'deve ler vinculos.json');
+  assert.doesNotMatch(
+    fonte,
+    /casarPorDocumento/,
+    'o palpite pelo nome do arquivo não pode ser o único caminho: os .pfx do escritório são nomeados por número de pedido',
+  );
+});

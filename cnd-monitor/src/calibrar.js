@@ -18,18 +18,20 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { IDS_RECEITAS, RECEITAS } from './receitas/index.js';
 import { IDS_ECAC, LOGIN_ECAC, PASSOS_LOGIN, RECEITAS_ECAC } from './receitas/ecac.js';
-// Reexportado: o inventário saiu daqui para poder servir também ao provedor do
-// e-CAC, mas continua fazendo parte do que a calibração oferece.
 import { inventariar } from './inventario.js';
-
-export { inventariar };
 import { detectarCaptcha, esperarSeletor, primeiroVisivel } from './provedores/web.js';
 import { abrirContexto, autenticado } from './provedores/ecac.js';
 import { PASTA_CERTIFICADOS_PADRAO, carregarConfig } from './config.js';
-import { casarPorDocumento, listarCertificados, resolverCertificado } from './certificados.js';
+import { listarCertificados, resolverCertificado } from './certificados.js';
+import { escolherCertificado, gravarVinculo, lerVinculos } from './vinculos.js';
+import { lerCertificado } from './certificado-info.js';
 import { formatar, limpar, tipoDocumento, validar } from './documentos.js';
-import { perguntarSenha } from './senha.js';
+import { perguntarSenha, perguntarTexto } from './senha.js';
 import { chamadoDireto } from './executavel.js';
+
+// Reexportado: o inventário saiu daqui para poder servir também ao provedor do
+// e-CAC, mas continua fazendo parte do que a calibração oferece.
+export { inventariar };
 
 const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -82,6 +84,26 @@ async function alvoPorCadastro(opcoes) {
 }
 
 /**
+ * Quando o programa nao sabe qual arquivo e, quem sabe e o operador.
+ *
+ * A alternativa era abortar com "nenhum certificado com este CNPJ no nome" --
+ * mensagem que manda o operador renomear 23 arquivos para agradar o programa,
+ * quando a informacao esta dentro deles.
+ */
+async function escolherNaMao(arquivos, documento, pasta) {
+  console.log(`\nNenhum arquivo em ${pasta} identificado como ${formatar(documento)}.`);
+  console.log('Escolha qual é (o nome do arquivo raramente traz o CNPJ):\n');
+  arquivos.forEach((nome, i) => console.log(`  ${String(i + 1).padStart(2)}. ${nome}`));
+
+  const resposta = await perguntarTexto('\nNúmero: ');
+  const indice = Number(resposta) - 1;
+  if (!Number.isInteger(indice) || indice < 0 || indice >= arquivos.length) {
+    throw new Error(`"${resposta}" não está na lista.`);
+  }
+  return arquivos[indice];
+}
+
+/**
  * Alvo da calibracao a partir do CNPJ, sem passar pelo cadastro.
  *
  * Exigir cadastro antes de calibrar invertia a ordem das coisas: o cadastro e
@@ -100,17 +122,34 @@ async function alvoPorDocumento(documento) {
   );
   if (erro) throw new Error(erro);
 
-  const arquivo = casarPorDocumento(arquivos, bruto);
+  // Primeiro a escolha ja feita pelo operador, depois o palpite pelo nome do
+  // arquivo. A ordem importa: muitas autoridades nomeiam o `.pfx` pelo numero
+  // do pedido, e ai o palpite falha dizendo "nao existe" com o arquivo na
+  // pasta. Era exatamente o que a calibracao fazia -- a consulta ja tinha sido
+  // corrigida, esta ficou para tras.
+  const vinculos = await lerVinculos(RAIZ);
+  let arquivo = escolherCertificado(arquivos, bruto, vinculos);
+
   if (!arquivo) {
-    throw new Error(
-      `Nenhum certificado em ${pasta} com ${formatar(bruto)} no nome do arquivo. ` +
-        `Encontrados: ${arquivos.length || 'nenhum'}.`,
-    );
+    if (arquivos.length === 0) throw new Error(`Nenhum certificado em ${pasta}.`);
+    arquivo = await escolherNaMao(arquivos, bruto, pasta);
   }
 
   console.log(`Certificado: ${arquivo}`);
   const senha = await perguntarSenha();
   if (!senha) throw new Error('Senha vazia.');
+
+  // Confere de quem e o certificado antes de gastar uma ida ao portal, e grava
+  // a escolha para nao perguntar de novo. O titular vem de dentro do `.pfx`:
+  // e a unica fonte que nao depende de como o arquivo foi nomeado.
+  const info = await lerCertificado(resolve(pasta, arquivo), senha).catch(() => null);
+  if (info?.documento && limpar(info.documento) !== bruto) {
+    throw new Error(
+      `Este certificado é de ${info.nome ?? 'outro titular'} (${formatar(info.documento)}), ` +
+        `não de ${formatar(bruto)}. Escolha outro arquivo.`,
+    );
+  }
+  if (info?.documento) await gravarVinculo(bruto, arquivo, RAIZ);
 
   return {
     cliente: { nome: formatar(bruto), documento: bruto, tipo: tipoDocumento(bruto) },
