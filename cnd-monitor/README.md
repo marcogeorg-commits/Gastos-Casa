@@ -232,6 +232,28 @@ projeto. O provedor **recusa rodar em integração contínua** (`CI` ou
 na nuvem é risco desproporcional ao problema que resolve, e documentar "não faça
 isso" não impede que aconteça.
 
+### "No navegador abre e aqui não"
+
+Se a consulta parar com **"Esta máquina não reconhece a cadeia de certificação
+do portal"** — ou, no log, `unable to verify the first certificate` numa página
+de 193 caracteres com HTTP 503 —, não é o certificado do cliente, nem a senha,
+nem procuração. É a cadeia do **servidor**.
+
+Quando um portal manda a cadeia incompleta, o navegador vai atrás do
+certificado intermediário que falta: o endereço está escrito dentro do próprio
+certificado, no campo *CA Issuers*. O Node não faz essa busca. Daí a diferença.
+
+```bash
+npm run cadeia                    # os portais do login do e-CAC
+npm run cadeia -- outro.gov.br    # qualquer outro
+```
+
+O comando faz o que o navegador faria e guarda o resultado em `ca/`. Tudo que
+estiver nessa pasta passa a valer nas conexões seguintes, junto com o chaveiro
+do sistema — o certificado do próprio site fica de fora de propósito, porque
+confiar nele individualmente autenticaria aquele servidor sem verificar cadeia
+nenhuma.
+
 ### Por que o CADIN federal era manual
 
 Não existe API de CADIN federal aberta a empresa privada:

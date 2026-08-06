@@ -30,11 +30,11 @@ test('reconhece a falha de cadeia disfarçada de portal fora do ar', () => {
 // diferentes. Comparar texto cru acusaria perda que não houve.
 const semEspacos = (pem) => pem.replace(/\s/g, '');
 
-test('as autoridades do sistema entram sem tirar as que já valiam', () => {
+test('as autoridades do sistema entram sem tirar as que já valiam', async () => {
   const antes = getCACertificates('default').map(semEspacos);
   const sistema = getCACertificates('system').map(semEspacos);
 
-  const r = confiarNasCasDoSistema();
+  const r = await confiarNasCasDoSistema();
   assert.equal(r.aplicado, true, r.motivo);
 
   const depois = new Set(getCACertificates('default').map(semEspacos));
@@ -44,7 +44,24 @@ test('as autoridades do sistema entram sem tirar as que já valiam', () => {
   for (const ca of sistema) assert.ok(depois.has(ca), 'as do sistema passaram a valer');
 });
 
-test('chamar de novo não refaz o trabalho', () => {
-  const primeiro = confiarNasCasDoSistema();
-  assert.deepEqual(confiarNasCasDoSistema(), primeiro);
+test('chamar de novo não refaz o trabalho', async () => {
+  const primeiro = await confiarNasCasDoSistema();
+  assert.deepEqual(await confiarNasCasDoSistema(), primeiro);
+});
+
+test('o que está na pasta ca/ passa a valer junto', async () => {
+  const { mkdtemp, writeFile } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { lerCasLocais } = await import('../src/ca-sistema.js');
+
+  const pasta = await mkdtemp(join(tmpdir(), 'cnd-caloc-'));
+  const bloco = (n) => `-----BEGIN CERTIFICATE-----\n${n}\n-----END CERTIFICATE-----`;
+  // Um arquivo com a cadeia inteira: os dois blocos têm de entrar.
+  await writeFile(join(pasta, 'cadeia.pem'), `${bloco('AAA')}\n${bloco('BBB')}\n`);
+  await writeFile(join(pasta, 'leiame.txt'), 'isto não é certificado');
+
+  assert.equal((await lerCasLocais(pasta)).length, 2);
+  // Pasta que não existe não é erro: quem nunca rodou `npm run cadeia` não tem.
+  assert.deepEqual(await lerCasLocais(join(pasta, 'nao-existe')), []);
 });

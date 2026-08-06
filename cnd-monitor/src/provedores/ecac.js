@@ -44,8 +44,9 @@ async function abrirNavegador(env) {
 
   // Antes de qualquer conexão: o túnel TLS do Playwright roda neste processo, e
   // é ele que precisa reconhecer a cadeia da ICP-Brasil.
-  const cas = confiarNasCasDoSistema();
+  const cas = await confiarNasCasDoSistema();
   if (!cas.aplicado) console.error(`      e-CAC: ${cas.motivo}`);
+  else if (cas.locais > 0) console.error(`      e-CAC: ${cas.locais} certificado(s) da pasta ca/.`);
 
   let chromium;
   try {
@@ -315,8 +316,9 @@ export async function consultar({ cliente, idCertidao, config = {}, env = proces
           detalhe:
             'Esta máquina não reconhece a cadeia de certificação do portal da Receita — a conexão ' +
             'nem chegou a ser feita. Não é o certificado do cliente, nem a senha, nem procuração. ' +
-            'Instale a cadeia da ICP-Brasil no sistema; se ela já estiver instalada, rode com ' +
-            'NODE_OPTIONS=--use-system-ca.',
+            'O navegador abre porque busca sozinho o certificado intermediário que falta; o Node ' +
+            'não faz isso. Rode "npm run cadeia" para baixar a cadeia deste portal para a pasta ' +
+            'ca/ e tente de novo.',
         };
       }
 

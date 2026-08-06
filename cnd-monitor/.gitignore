@@ -28,6 +28,11 @@ historico/
 # e cadastro de cliente, e cadastro de cliente nao vai para o repositorio.
 vinculos.json
 
+# Cadeias de certificacao baixadas por `npm run cadeia`. Nao sao segredo --
+# certificado de autoridade e publico -- mas sao derivadas: dependem do que
+# cada portal apresenta e de quando foram baixadas. Basta rodar de novo.
+ca/
+
 # As certidoes emitidas. Sao documentos fiscais dos clientes: ficam no disco do
 # escritorio, nao no repositorio. Basta rodar de novo para reemitir.
 certidoes/
