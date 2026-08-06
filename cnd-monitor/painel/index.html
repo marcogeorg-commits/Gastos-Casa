@@ -466,6 +466,42 @@ function renderCertificados() {
     </section>`;
 }
 
+/**
+ * Relê a varredura da pasta e redesenha a aba, devolvendo o cursor.
+ *
+ * Redesenhar no meio da digitação tiraria o foco do campo a cada letra, então
+ * o cursor é reposto onde estava. Espera a gravação assentar: o servidor só
+ * consegue varrer a pasta depois que o caminho novo chegou ao clientes.json.
+ */
+let releituraPendente = null;
+
+function relerCertificados() {
+  clearTimeout(releituraPendente);
+  releituraPendente = setTimeout(async () => {
+    let dados;
+    try {
+      dados = await api('/api/estado');
+    } catch {
+      return; // Servidor fora do ar; a próxima tecla tenta de novo.
+    }
+
+    estado.certificados = dados.certificados;
+    estado.senhas = dados.senhas ?? {};
+
+    const campo = document.getElementById('pasta-cert');
+    const focado = document.activeElement === campo;
+    const cursor = campo?.selectionStart ?? 0;
+
+    renderCertificados();
+
+    if (focado) {
+      const novo = document.getElementById('pasta-cert');
+      novo?.focus();
+      novo?.setSelectionRange(cursor, cursor);
+    }
+  }, 900);
+}
+
 // ---------------------------------------------------------------------------
 // Aba: competências
 // ---------------------------------------------------------------------------
@@ -578,6 +614,9 @@ document.addEventListener('input', (e) => {
   if (alvo.id === 'pasta-cert') {
     estado.config.certificados = { pastaPadrao: alvo.value };
     gravar();
+    // Quem varre a pasta é o servidor: sem reler o estado, você digitaria o
+    // caminho certo e continuaria vendo "pasta não encontrada".
+    relerCertificados();
     return;
   }
 
