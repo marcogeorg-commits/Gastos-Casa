@@ -36,7 +36,15 @@ export async function inventariar(pagina) {
 
     const campos = [];
     const botoes = [];
+    const links = [];
     const tagsCustomizadas = new Set();
+
+    // "Botao" e o que se clica, nao a tag <button>. O gov.br entrega o caminho
+    // de entrada como <a> estilizado e como <div role="button"> -- procurar so
+    // por <button> devolvia "Botoes (0)" numa tela cheia de opcoes.
+    const CLICAVEL =
+      'button, input[type=submit], input[type=button], input[type=image], ' +
+      '[role=button], [role=link], a[class*="btn" i], a[class*="button" i], [onclick]';
 
     const percorrer = (raiz) => {
       for (const el of raiz.querySelectorAll('*')) {
@@ -44,7 +52,12 @@ export async function inventariar(pagina) {
         if (el.matches('input, select, textarea') && el.type !== 'hidden') {
           campos.push(descrever(el));
         }
-        if (el.matches('button, input[type=submit], a[role=button]')) botoes.push(descrever(el));
+        if (el.matches(CLICAVEL)) botoes.push(descrever(el));
+        // Os links vao inteiros, com destino: num portal que redireciona para o
+        // SSO, o href diz para onde a entrada leva mesmo quando o texto nao diz.
+        if (el.matches('a[href]')) {
+          links.push({ texto: (el.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 60) || null, href: el.getAttribute('href') });
+        }
         if (el.shadowRoot) percorrer(el.shadowRoot);
       }
     };
@@ -54,11 +67,12 @@ export async function inventariar(pagina) {
       titulo: document.title,
       campos,
       botoes,
+      links,
       tagsCustomizadas: [...tagsCustomizadas],
       iframes: [...document.querySelectorAll('iframe')].map((el) => el.src),
       // Fallback de diagnóstico: se nada foi encontrado, o texto da página diz
       // se caiu numa tela de erro, de manutenção ou de login.
-      textoVisivel: (document.body?.innerText ?? '').replace(/\s+/g, ' ').trim().slice(0, 600),
+      textoVisivel: (document.body?.innerText ?? '').replace(/\s+/g, ' ').trim().slice(0, 1500),
       html: document.documentElement.outerHTML.length,
     };
   });

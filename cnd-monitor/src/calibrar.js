@@ -47,8 +47,13 @@ const ESPERA_APP = 30_000;
 export async function esperarApp(pagina, tempoLimite = ESPERA_APP) {
   await pagina.waitForLoadState('networkidle').catch(() => {});
   try {
+    // O campo do hCaptcha entra na pagina antes de tudo e satisfazia esta
+    // espera sozinho: o inventario fotografava a tela ainda vazia e concluia
+    // "nenhum botao" num portal cheio de opcoes. Ele fica de fora da conta.
     await pagina
-      .locator('input:not([type=hidden]), select, textarea, button')
+      .locator(
+        'input:not([type=hidden]):not([id*="captcha" i]), select, textarea:not([id*="captcha" i]), button, a[href]',
+      )
       .first()
       .waitFor({ state: 'attached', timeout: tempoLimite });
     return true;
@@ -207,6 +212,18 @@ export async function calibrarEcac(idCertidao, opcoes = {}) {
     console.log(`\nCampos (${inventario.campos.length}):`);
     for (const c of inventario.campos) {
       console.log(`  ${c.seletor ?? c.tag}  ·  ${c.texto ?? c.placeholder ?? c.aria ?? '(sem rótulo)'}`);
+    }
+
+    // Com destino, nao so texto: num portal que manda para o SSO, o href diz
+    // para onde a entrada leva mesmo quando o texto do link nao diz.
+    console.log(`\nLinks (${inventario.links.length}):`);
+    for (const l of inventario.links) {
+      console.log(`  ${l.texto ?? '(sem texto)'}  ->  ${l.href}`);
+    }
+
+    if (inventario.iframes.length > 0) {
+      console.log(`\nQuadros:`);
+      for (const src of inventario.iframes) console.log(`  ${src || '(sem src)'}`);
     }
 
     console.log(`\nLinks de serviço que casam com a receita:`);

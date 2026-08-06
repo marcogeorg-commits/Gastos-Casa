@@ -964,3 +964,50 @@ describe('ruído da página', async () => {
     assert.equal(resultado.situacao, 'negativa');
   });
 });
+
+test('o inventário enxerga o que se clica, não só a tag <button>', async (t) => {
+  let chromium;
+  try {
+    ({ chromium } = await import('playwright'));
+  } catch {
+    return t.skip('Playwright indisponível');
+  }
+
+  let navegador;
+  try {
+    navegador = await chromium.launch({
+      args: ['--no-sandbox'],
+      ...(process.env.PLAYWRIGHT_EXECUTABLE_PATH
+        ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH }
+        : {}),
+    });
+  } catch {
+    return t.skip('Chromium indisponível');
+  }
+
+  const { inventariar } = await import('../src/inventario.js');
+  const pagina = await navegador.newPage();
+
+  try {
+    // A tela do gov.br entrega o caminho de entrada como <a> estilizado e como
+    // <div role="button">. Procurar só por <button> devolvia "Botões (0)" numa
+    // tela cheia de opções -- e a rotina culpava o certificado.
+    await pagina.setContent(`
+      <a href="/sso" class="br-button primary">Entrar com gov.br</a>
+      <div role="button" id="cert">Seu certificado digital</div>
+      <a href="/ajuda">Instruções</a>
+      <input id="h-captcha-response-abc" type="hidden">`);
+
+    const i = await inventariar(pagina);
+    const rotulos = i.botoes.map((b) => b.texto);
+
+    assert.ok(rotulos.includes('Entrar com gov.br'), 'o link estilizado de botão conta');
+    assert.ok(rotulos.includes('Seu certificado digital'), 'role=button conta');
+    // O link comum não vira botão, mas aparece com destino: num portal que
+    // redireciona para o SSO, o href diz para onde a entrada leva.
+    assert.ok(i.links.some((l) => l.href === '/ajuda' && l.texto === 'Instruções'));
+    assert.ok(i.links.some((l) => l.href === '/sso'));
+  } finally {
+    await navegador.close();
+  }
+});
