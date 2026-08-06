@@ -423,7 +423,12 @@ function renderSituacao() {
         </th>
         ${colunas.map((id) => {
           const item = c.itens.get(id);
-          return `<td title="${esc(item?.detalhe ?? '')}">${item ? selo(item.situacao) : selo('nao_aplicavel')}</td>`;
+          if (!item) return `<td>${selo('nao_aplicavel')}</td>`;
+          return `<td title="${esc(item.detalhe ?? '')}">${selo(item.situacao)}${
+            item.arquivo
+              ? `<a class="doc" href="/${esc(item.arquivo)}" target="_blank" rel="noopener">documento</a>`
+              : ''
+          }</td>`;
         }).join('')}
       </tr>`).join('');
 

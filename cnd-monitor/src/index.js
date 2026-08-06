@@ -247,6 +247,7 @@ cnd-monitor — consulta mensal de certidões da carteira de clientes
 
   const execucao = await executar(config, credenciais, {
     vigentes,
+    competencia,
     concorrencia: assistido ? 1 : Number(args.concorrencia ?? 4),
     env,
     aoProgredir: ({ concluidas, total, resultado }) => {

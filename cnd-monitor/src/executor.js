@@ -134,6 +134,8 @@ export async function executar(config, credenciais, opcoes = {}) {
       const anterior = vigentes.get(chaveDe(tarefa.cliente.documento, tarefa.idCertidao));
       const bruto = anterior
         ? {
+            // O comprovante ja guardado continua valendo: e o mesmo documento.
+            arquivo: anterior.arquivo ?? null,
             cliente: tarefa.cliente.nome,
             documento: tarefa.cliente.documento,
             certidao: tarefa.idCertidao,
@@ -150,6 +152,7 @@ export async function executar(config, credenciais, opcoes = {}) {
         : await consultarUma(tarefa, config, credenciais, {
             provedoresIndisponiveis,
             env,
+            competencia: opcoes.competencia ?? 'avulso',
           });
       // O detalhe vai para o histórico versionado: credencial ecoada pela API
       // não pode chegar lá.
@@ -227,7 +230,15 @@ async function consultarUma(tarefa, config, credenciais, ctx) {
   try {
     const provedor = obterProvedor(idProvedor);
     const resultado = await comRetentativa(() =>
-      provedor.consultar({ cliente, certidao, idCertidao, credenciais, config, env: ctx.env }),
+      provedor.consultar({
+        cliente,
+        certidao,
+        idCertidao,
+        credenciais,
+        config,
+        env: ctx.env,
+        competencia: ctx.competencia,
+      }),
     );
     return { ...base, provedor: idProvedor, ...resultado };
   } catch (erro) {

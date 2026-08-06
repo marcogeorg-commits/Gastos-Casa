@@ -17,8 +17,13 @@
  * por consulta esperando um clique que nunca vem.
  */
 
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { RECEITAS } from '../receitas/index.js';
+import { salvarComprovante } from '../comprovante.js';
 import { detectarCaptcha, esperarSeletor, primeiroSeletorPresente, primeiroVisivel } from './web.js';
+
+const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
 export const id = 'assistido';
 export const nome = 'Assistido (você resolve só o captcha)';
@@ -101,7 +106,7 @@ export async function consultar(argumentos) {
   return enfileirar(() => consultarAgora(argumentos));
 }
 
-async function consultarAgora({ cliente, idCertidao, env = process.env }) {
+async function consultarAgora({ cliente, idCertidao, env = process.env, competencia = 'avulso' }) {
   const receita = RECEITAS[idCertidao];
 
   if (!receita) {
@@ -124,9 +129,14 @@ async function consultarAgora({ cliente, idCertidao, env = process.env }) {
   const browser = await abrirNavegador(env);
   // Um contexto por consulta: sessão de um cliente não pode vazar para a do
   // seguinte, e portal de certidão guarda estado entre emissões.
-  const contexto = await browser.newContext({ locale: 'pt-BR' });
+  const contexto = await browser.newContext({ acceptDownloads: true, locale: 'pt-BR' });
   const pagina = await contexto.newPage();
   pagina.setDefaultTimeout(TEMPO_LIMITE);
+
+  let baixado = null;
+  pagina.on('download', (d) => {
+    baixado = d;
+  });
 
   try {
     const urls = receita.urlsPara?.(cliente) ?? receita.urls ?? [receita.url];
@@ -165,6 +175,17 @@ async function consultarAgora({ cliente, idCertidao, env = process.env }) {
 
     if (captcha?.bloqueante && resultado.situacao === 'erro') {
       resultado.detalhe = `${resultado.detalhe} (o portal usa ${captcha.provedor})`;
+    }
+
+    if (resultado.situacao !== 'erro') {
+      resultado.arquivo = await salvarComprovante({
+        pagina,
+        download: baixado,
+        raiz: RAIZ,
+        competencia,
+        cliente,
+        idCertidao,
+      });
     }
     return resultado;
   } catch (erro) {

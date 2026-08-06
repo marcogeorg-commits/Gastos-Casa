@@ -13,6 +13,7 @@
  */
 
 import { mkdir, writeFile } from 'node:fs/promises';
+import { salvarComprovante } from '../comprovante.js';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RECEITAS } from '../receitas/index.js';
@@ -258,7 +259,7 @@ async function registrarFalha(pagina, idCertidao, cliente) {
   }
 }
 
-export async function consultar({ cliente, idCertidao, env = process.env }) {
+export async function consultar({ cliente, idCertidao, env = process.env, competencia = 'avulso' }) {
   const receita = RECEITAS[idCertidao];
 
   if (!receita) {
@@ -274,13 +275,23 @@ export async function consultar({ cliente, idCertidao, env = process.env }) {
   }
 
   const browser = await abrirNavegador(env);
+  // `acceptDownloads` precisa estar ligado antes de qualquer navegacao: o CNDT
+  // entrega a certidao como download, e sem isso ela e descartada.
   const contexto = await browser.newContext({
+    acceptDownloads: true,
     locale: 'pt-BR',
     userAgent:
       'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
   });
   const pagina = await contexto.newPage();
   pagina.setDefaultTimeout(TEMPO_LIMITE);
+
+  // O download pode acontecer a qualquer momento do fluxo; guardar o ultimo
+  // evita ter de adivinhar em qual clique ele vem.
+  let baixado = null;
+  pagina.on('download', (d) => {
+    baixado = d;
+  });
 
   try {
     // Portais publicos trocam de endereco sem aviso (e sem redirecionar), entao
@@ -333,6 +344,15 @@ export async function consultar({ cliente, idCertidao, env = process.env }) {
       if (resultado.situacao === 'erro') {
         const captura = await registrarFalha(pagina, idCertidao, cliente);
         if (captura) resultado.detalhe = `${resultado.detalhe} — tela salva em ${captura}`;
+      } else {
+        resultado.arquivo = await salvarComprovante({
+          pagina,
+          download: baixado,
+          raiz: RAIZ,
+          competencia,
+          cliente,
+          idCertidao,
+        });
       }
       return resultado;
     }

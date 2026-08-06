@@ -22,6 +22,7 @@ Saídas:
 
 | Arquivo | Conteúdo |
 |---|---|
+| `certidoes/AAAA-MM/<CNPJ>_<NOME>/` | **as certidões em si**, uma pasta por cliente |
 | `relatorios/AAAA-MM.html` | relatório da competência, com o timbre da casa |
 | `relatorios/ultimo.html` | cópia da última execução |
 | `historico/AAAA-MM.json` | resultado bruto, base da comparação entre meses |
@@ -119,6 +120,35 @@ usuário — a cada inicialização.
 
 Se um dia este projeto for para o GitHub, o repositório precisa ser **privado**:
 o `clientes.json` tem CNPJ e CPF de terceiros.
+
+## O documento, não só a notícia
+
+O relatório diz que a certidão está negativa; o que você anexa numa licitação ou
+manda para o banco é o PDF. Toda consulta bem-sucedida guarda o comprovante em
+`certidoes/AAAA-MM/<CNPJ>_<RAZÃO SOCIAL>/`, e o link aparece na célula do
+relatório e do painel.
+
+Cada portal entrega de um jeito, então a captura tenta em ordem: o arquivo que o
+portal baixou (o CNDT faz assim), a página impressa em PDF (a Receita mostra a
+certidão como página), e por último a tela mais o HTML. O terceiro caso não é
+desistência — `page.pdf()` só funciona em Chromium sem janela, e o modo assistido
+roda com janela de propósito; a captura de tela ainda prova o que foi consultado
+e quando.
+
+Ficar sem o arquivo nunca derruba a consulta: saber que o cliente está irregular
+vale mesmo sem o papel.
+
+## Não reconsultar o que ainda vale
+
+Uma CND federal vale 180 dias; a CRF do FGTS, 30. Antes de consultar, a rotina lê
+o histórico e aproveita o que ainda está vigente, com folga de 20 dias antes do
+vencimento. No modo assistido isso é o que separa "um captcha por certidão por
+mês" de "só os que venceram" — a CND federal passa a pedir captcha uma vez por
+semestre.
+
+O resultado aproveitado aparece como **Vigente**, não como "Negativa": o dado é
+da consulta anterior e o relatório não pode dar a entender que foi verificado
+hoje. `--forcar` ignora o aproveitamento.
 
 ## Comparação mês a mês
 

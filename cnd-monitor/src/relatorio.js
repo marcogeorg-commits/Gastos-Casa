@@ -268,8 +268,15 @@ export function gerarHtml({ competencia, execucao, config, comparacao = null }) 
           if (!item) {
             return `<td class="celula celula--vazia"><span class="selo selo--neutro"><span class="selo__icone" aria-hidden="true">–</span>n/a</span></td>`;
           }
+          // O caminho do comprovante fica na celula: e o que a pessoa vai
+          // procurar para anexar num processo, e procurar pasta a pasta depois
+          // e o trabalho que este programa deveria ter evitado.
           return `<td class="celula" title="${esc(item.detalhe ?? '')}">${selo(item.situacao)}${
             item.validaAte ? `<span class="celula__validade">vence ${esc(dataCurta(item.validaAte))}</span>` : ''
+          }${
+            item.arquivo
+              ? `<a class="celula__validade" href="../${esc(item.arquivo)}" target="_blank" rel="noopener">documento</a>`
+              : ''
           }</td>`;
         })
         .join('');
