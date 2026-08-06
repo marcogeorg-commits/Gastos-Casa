@@ -89,8 +89,27 @@ export async function autenticado(pagina) {
   return (await primeiroVisivel(pagina, marcasDeLogin)) === null;
 }
 
+/**
+ * Ambiente de integracao continua (GitHub Actions e afins).
+ *
+ * O e-CAC roda com o certificado do cliente. Subir 20 A1 para um runner na
+ * nuvem e risco desproporcional, e documentar "nao faca isso" nao impede que
+ * aconteca -- por isso a recusa e do codigo, nao do README.
+ */
+export function emIntegracaoContinua(env = process.env) {
+  return env.CI === 'true' || Boolean(env.GITHUB_ACTIONS);
+}
+
 export async function consultar({ cliente, idCertidao, config = {}, env = process.env }) {
   const receita = RECEITAS_ECAC[idCertidao];
+
+  if (emIntegracaoContinua(env) && env.ECAC_PERMITIR_CI !== 'true') {
+    return {
+      situacao: 'manual',
+      detalhe:
+        'O e-CAC não roda em integração contínua: exige o certificado digital do cliente, que não deve ser enviado a um runner na nuvem. Rode na máquina do escritório.',
+    };
+  }
   if (!receita) {
     return {
       situacao: 'manual',

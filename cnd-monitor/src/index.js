@@ -69,6 +69,21 @@ cnd-monitor — consulta mensal de certidões da carteira de clientes
     return 0;
   }
 
+  // Agendamento rodando em simulado geraria, todo mês, um relatório de dados
+  // inventados — e o commitaria no repositório. Rotulado, mas a um clique de
+  // ser lido como situação real dos clientes.
+  const simulado = new Set(
+    config.certidoesAtivas.map((id) => config.provedores[id] ?? config.provedorPadrao),
+  );
+  if ((env.CI === 'true' || env.GITHUB_ACTIONS) && simulado.size === 1 && simulado.has('mock')) {
+    console.error(
+      'Erro: o agendamento está configurado com o provedor "mock" e produziria um relatório\n' +
+        'de dados simulados. Configure um provedor real em clientes.json, ou desative o\n' +
+        'agendamento até haver um. Para ignorar propositalmente: PERMITIR_MOCK_EM_CI=true.',
+    );
+    if (env.PERMITIR_MOCK_EM_CI !== 'true') return 1;
+  }
+
   const credenciais = credenciaisDoAmbiente(env);
 
   console.log(

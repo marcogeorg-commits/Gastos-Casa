@@ -267,3 +267,41 @@ test('o e-CAC lê "nada consta" do CADIN como ausência de registro', async () =
   // Sem palavra reconhecível, nunca inventa desfecho.
   assert.equal(interpretar('bem-vindo ao portal', 'cadin_federal').situacao, 'erro');
 });
+
+test('o e-CAC recusa rodar em integração contínua', async () => {
+  // Certificado de cliente não vai para runner na nuvem. Documentar não basta:
+  // a recusa precisa estar no código.
+  const { consultar, emIntegracaoContinua } = await import('../src/provedores/ecac.js');
+
+  assert.equal(emIntegracaoContinua({ GITHUB_ACTIONS: 'true' }), true);
+  assert.equal(emIntegracaoContinua({ CI: 'true' }), true);
+  assert.equal(emIntegracaoContinua({}), false);
+
+  const resultado = await consultar({
+    cliente: { nome: 'Alfa', certificado: { arquivo: 'a.pfx', senhaVariavel: 'X' } },
+    idCertidao: 'cadin_federal',
+    env: { GITHUB_ACTIONS: 'true' },
+  });
+
+  assert.equal(resultado.situacao, 'manual');
+  assert.match(resultado.detalhe, /não roda em integração contínua/);
+});
+
+test('a rodada agendada recusa produzir relatório simulado', async () => {
+  const { principal } = await import('../src/index.js');
+  const registros = [];
+  const erroOriginal = console.error;
+  console.error = (m) => registros.push(String(m));
+
+  try {
+    const codigo = await principal(
+      ['--clientes', 'clientes.exemplo.json', '--competencia', 'teste', '--saida', '/tmp/cnd-ci'],
+      { GITHUB_ACTIONS: 'true' },
+    );
+
+    assert.equal(codigo, 1, 'sai com erro em vez de commitar dados inventados');
+    assert.match(registros.join(' '), /dados simulados/);
+  } finally {
+    console.error = erroOriginal;
+  }
+});
