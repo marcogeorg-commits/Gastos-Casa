@@ -10,7 +10,8 @@ import {
   configAvulsa,
   credenciaisDoAmbiente,
 } from './config.js';
-import { casarPorDocumento, listarCertificados } from './certificados.js';
+import { listarCertificados } from './certificados.js';
+import { escolherCertificado, gravarVinculo, lerVinculos } from './vinculos.js';
 import { limpar } from './documentos.js';
 import { descreverSituacao } from './catalogo.js';
 import { executar, planejar } from './executor.js';
@@ -53,13 +54,19 @@ export function rotuloAvulso(documento, agora = new Date()) {
  * Sem isso, CADIN e Situacao Fiscal voltam "sem certificado no cadastro" mesmo
  * com o `.pfx` ali do lado -- que foi exatamente o que aconteceu.
  */
-async function anexarCertificado(config, documento) {
+async function anexarCertificado(config, documento, escolhaDoOperador = null) {
   const { arquivos } = await listarCertificados(config.certificados?.pastaPadrao);
-  const arquivo = casarPorDocumento(arquivos, documento);
-  if (!arquivo) return;
 
-  const variavel = `CERT_${limpar(documento)}`;
-  config.clientes[0].certificado = { arquivo, senhaVariavel: variavel };
+  // A escolha explicita vence o palpite pelo nome, e fica guardada: o operador
+  // so precisa apontar o arquivo de cada cliente uma vez.
+  const arquivo = arquivos.includes(escolhaDoOperador)
+    ? escolhaDoOperador
+    : escolherCertificado(arquivos, documento, await lerVinculos());
+
+  if (!arquivo) return;
+  if (escolhaDoOperador === arquivo) await gravarVinculo(documento, arquivo);
+
+  config.clientes[0].certificado = { arquivo, senhaVariavel: `CERT_${limpar(documento)}` };
 }
 
 export async function principal(argv = process.argv.slice(2), env = process.env) {
@@ -75,6 +82,7 @@ cnd-monitor — consulta mensal de certidões da carteira de clientes
 
   --documento <CNPJ>       consulta avulsa de um documento, sem cadastro
   --certidoes <a,b,c>      quais certidões na consulta avulsa
+  --certificado <arquivo>  qual .pfx usar (fica lembrado para este documento)
   --municipio <nome>       exigido pela CND Municipal
   --clientes <arquivo>     padrão: clientes.json
   --provedor <id>          sobrescreve o provedorPadrao
@@ -108,7 +116,11 @@ cnd-monitor — consulta mensal de certidões da carteira de clientes
     : await carregarConfig(caminhoClientes);
 
   if (avulso) {
-    await anexarCertificado(config, String(args.documento));
+    await anexarCertificado(
+      config,
+      String(args.documento),
+      args.certificado ? String(args.certificado) : null,
+    );
   }
   const cadeia = args.provedor ? cadeiaDe(String(args.provedor)) : null;
   if (cadeia) {

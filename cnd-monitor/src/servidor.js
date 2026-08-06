@@ -25,7 +25,8 @@ import { dirname, extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chamadoDireto } from './executavel.js';
 import { carregarAmbiente, temSenha } from './ambiente.js';
-import { casarPorDocumento, listarCertificados } from './certificados.js';
+import { listarCertificados } from './certificados.js';
+import { escolherCertificado, lerVinculos } from './vinculos.js';
 import { PASTA_CERTIFICADOS_PADRAO, configAvulsa, credenciaisDoAmbiente } from './config.js';
 import { executar } from './executor.js';
 import { descreverSituacao } from './catalogo.js';
@@ -178,6 +179,7 @@ function iniciarRodada(opcoes = {}, raiz = RAIZ) {
   if (opcoes.documento) args.push('--documento', String(opcoes.documento));
   if (opcoes.municipio) args.push('--municipio', String(opcoes.municipio));
   if (opcoes.certidoes?.length) args.push('--certidoes', opcoes.certidoes.join(','));
+  if (opcoes.certificado) args.push('--certificado', String(opcoes.certificado));
 
   rodada.ativa = true;
   rodada.linhas = [];
@@ -289,7 +291,10 @@ async function montarEstado(raiz) {
     senhas: resolve(raiz, '.env'),
   };
 
-  return { config, competencias, atual, certificados, senhas, locais };
+  return {
+    config, competencias, atual, certificados, senhas, locais,
+    vinculos: await lerVinculos(raiz),
+  };
 }
 
 // --- Servidor --------------------------------------------------------------
@@ -373,7 +378,8 @@ async function tratarApi(req, res, rota, raiz, porta) {
     const pasta = config0.certificados?.pastaPadrao ?? PASTA_CERTIFICADOS_PADRAO;
     const { arquivos } = await listarCertificados(pasta, raiz);
 
-    const arquivo = corpo.certificado || casarPorDocumento(arquivos, corpo.documento);
+    const arquivo =
+      corpo.certificado || escolherCertificado(arquivos, corpo.documento, await lerVinculos(raiz));
     const senha = String(corpo.senha ?? '');
 
     // A senha vive só nesta requisição: entra num ambiente descartável passado

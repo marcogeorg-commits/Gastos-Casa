@@ -570,3 +570,50 @@ test('o rótulo da consulta avulsa carrega documento e data', async () => {
     'avulso-56049783000152-2026-08-06',
   );
 });
+
+// --- Qual certificado é de quem ------------------------------------------
+
+test('a escolha do operador vence o palpite pelo nome do arquivo', async () => {
+  const { escolherCertificado } = await import('../src/vinculos.js');
+
+  // Nomes como as certificadoras realmente entregam: número do pedido, não
+  // CNPJ. Deduzir aqui dizia "não existe certificado" com o arquivo na pasta.
+  const arquivos = ['CERTIFICADO A1 34151051.pfx', 'TOCA DA ONCA 2026.pfx'];
+
+  assert.equal(escolherCertificado(arquivos, '56049783000152', {}), null);
+  assert.equal(
+    escolherCertificado(arquivos, '56049783000152', { '56049783000152': 'TOCA DA ONCA 2026.pfx' }),
+    'TOCA DA ONCA 2026.pfx',
+  );
+});
+
+test('o vínculo salvo tem precedência mesmo quando o nome casaria', async () => {
+  const { escolherCertificado } = await import('../src/vinculos.js');
+
+  // Renovação: o arquivo velho tem o CNPJ no nome, o novo não. Quem sabe qual
+  // vale é o operador.
+  const arquivos = ['EMP 56049783000152 2025.pfx', 'renovado-2026.pfx'];
+  assert.equal(
+    escolherCertificado(arquivos, '56049783000152', { '56049783000152': 'renovado-2026.pfx' }),
+    'renovado-2026.pfx',
+  );
+});
+
+test('vínculo apontando para arquivo que sumiu não é usado', async () => {
+  const { escolherCertificado } = await import('../src/vinculos.js');
+  assert.equal(
+    escolherCertificado(['outro.pfx'], '56049783000152', { '56049783000152': 'apagado.pfx' }),
+    null,
+  );
+});
+
+test('o vínculo guarda o arquivo, nunca a senha', async () => {
+  const { gravarVinculo, lerVinculos } = await import('../src/vinculos.js');
+  const raiz = await mkdtemp(join(tmpdir(), 'vinc-'));
+
+  await gravarVinculo('56.049.783/0001-52', 'TOCA DA ONCA 2026.pfx', raiz);
+  const gravado = await readFile(join(raiz, 'vinculos.json'), 'utf8');
+
+  assert.deepEqual(await lerVinculos(raiz), { 56049783000152: 'TOCA DA ONCA 2026.pfx' });
+  assert.doesNotMatch(gravado, /senha/i);
+});

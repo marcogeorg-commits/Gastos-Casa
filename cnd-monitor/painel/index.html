@@ -160,7 +160,7 @@ const descrever = (s) => SITUACOES[s] ?? SITUACOES.erro;
 // ---------------------------------------------------------------------------
 // Estado e transporte
 // ---------------------------------------------------------------------------
-const estado = { config: null, competencias: [], atual: null, certificados: null, senhas: {}, locais: {} };
+const estado = { config: null, competencias: [], atual: null, certificados: null, senhas: {}, locais: {}, vinculos: {} };
 let sondagem = null;
 
 const esc = (v) => String(v ?? '')
@@ -219,18 +219,36 @@ function gravar({ imediato = false } = {}) {
 // Aba: consulta rápida — um documento, resposta na hora, sem cadastrar
 // ---------------------------------------------------------------------------
 const avulsa = {
-  documento: '', certidoes: null, municipio: '', senha: '',
+  documento: '', certidoes: null, municipio: '', senha: '', certificado: '',
   rodando: false, saida: null,
 };
 
-/** Certificado da pasta cujo nome contém este documento. */
+/**
+ * Certificado deste documento: a escolha já feita antes do palpite pelo nome.
+ *
+ * Nem toda certificadora põe o CNPJ no nome do arquivo — algumas usam o número
+ * do pedido. Deduzir sempre fazia o painel dizer "não achei certificado" com o
+ * arquivo ali na pasta.
+ */
 function certificadoDe(documento) {
   const alvo = limpar(documento).replace(/\D/g, '');
-  if (alvo.length !== 14 && alvo.length !== 11) return null;
+  const arquivos = estado.certificados?.arquivos ?? [];
 
-  const casam = (estado.certificados?.arquivos ?? [])
-    .filter((nome) => nome.replace(/\D/g, '').includes(alvo));
+  const salvo = estado.vinculos?.[alvo];
+  if (salvo && arquivos.includes(salvo)) return salvo;
+
+  if (alvo.length !== 14 && alvo.length !== 11) return null;
+  const casam = arquivos.filter((nome) => nome.replace(/\D/g, '').includes(alvo));
   return casam.length === 1 ? casam[0] : null;
+}
+
+/** Certidões que o modo escolhido consegue realmente buscar. */
+function cobertasPor(provedor) {
+  if (provedor === 'auto' || provedor === 'mock') return Object.keys(CERTIDOES);
+  if (provedor === 'assistido') return Object.keys(CERTIDOES).filter((id) => id !== 'municipal');
+  if (provedor === 'ecac') return SO_COM_CERTIFICADO;
+  if (provedor === 'web') return Object.keys(CERTIDOES).filter((id) => id !== 'municipal');
+  return Object.keys(CERTIDOES);
 }
 
 function renderAvulsa() {
@@ -239,15 +257,22 @@ function renderAvulsa() {
   const valido = Boolean(tipo) && validar(avulsa.documento);
   const escolhidas = avulsa.certidoes ?? Object.keys(CERTIDOES);
 
+  const modo = document.getElementById('provedor')?.value ?? 'auto';
+  const cobertas = cobertasPor(modo);
+
   const marcadores = Object.entries(CERTIDOES).map(([id, meta]) => {
-    const aplicavel = !tipo || meta.aceita.includes(tipo);
-    return `<span class="marcador" role="button" tabindex="0"
-      aria-pressed="${escolhidas.includes(id)}" data-avulsa-certidao="${id}"
+    const aplicavel = (!tipo || meta.aceita.includes(tipo)) && cobertas.includes(id);
+    const motivo = !cobertas.includes(id)
+      ? `o modo escolhido não busca esta certidão`
+      : !aplicavel ? `não se aplica a ${tipo}` : '';
+    return `<span class="marcador" role="button" tabindex="0" title="${esc(motivo)}"
+      aria-pressed="${escolhidas.includes(id) && aplicavel}" data-avulsa-certidao="${id}"
       style="${aplicavel ? '' : 'opacity:.3;pointer-events:none'}">${esc(meta.nome)}</span>`;
   }).join('');
 
   const precisaMunicipio = escolhidas.includes('municipal') && tipo === 'cnpj';
-  const cert = valido ? certificadoDe(avulsa.documento) : null;
+  const cert = valido ? (avulsa.certificado || certificadoDe(avulsa.documento)) : null;
+  const disponiveis = estado.certificados?.arquivos ?? [];
   const querCertificado = escolhidas.some((id) => SO_COM_CERTIFICADO.includes(id));
 
   alvo.innerHTML = `
@@ -281,24 +306,34 @@ function renderAvulsa() {
 
         ${querCertificado && valido ? `
         <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--linha)">
-          ${cert ? `
-            <p class="ajuda" style="margin:0 0 10px">
-              CADIN e Situação Fiscal exigem o certificado digital. Encontrei
-              <code>${esc(cert)}</code> na pasta, pelo CNPJ no nome do arquivo.
-            </p>
-            <div style="max-width:300px">
-              <input type="password" id="avulsa-senha" value="${esc(avulsa.senha)}"
-                     placeholder="Senha do certificado" autocomplete="off">
-            </div>
-            <p class="ajuda" style="margin:8px 0 0;font-size:13px">
-              Usada só nesta consulta, em memória — não é gravada em lugar nenhum.
-              Para as rodadas mensais, a senha vai no <code>.env</code>.
+          ${disponiveis.length === 0 ? `
+            <p class="ajuda" style="margin:0">
+              CADIN e Situação Fiscal exigem certificado digital, e não há nenhum
+              <code>.pfx</code> na pasta configurada. Veja a aba <strong>Certificados</strong>.
             </p>
           ` : `
-            <p class="ajuda" style="margin:0">
-              CADIN e Situação Fiscal exigem certificado digital, e não achei nenhum
-              <code>.pfx</code> na pasta cujo nome contenha este documento. As demais
-              certidões serão consultadas normalmente.
+            <p class="ajuda" style="margin:0 0 10px">
+              CADIN e Situação Fiscal exigem o certificado digital deste cliente.
+              ${cert
+                ? 'Escolha guardada — não precisa apontar de novo.'
+                : 'Escolha o arquivo desta vez; o programa lembra nas próximas.'}
+            </p>
+            <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">
+              <div style="flex:1 1 280px;max-width:420px">
+                <select id="avulsa-cert" style="width:100%">
+                  <option value="">— escolha o certificado —</option>
+                  ${disponiveis.map((a) =>
+                    `<option value="${esc(a)}" ${a === cert ? 'selected' : ''}>${esc(a)}</option>`).join('')}
+                </select>
+              </div>
+              <div style="flex:0 1 240px">
+                <input type="password" id="avulsa-senha" value="${esc(avulsa.senha)}"
+                       placeholder="Senha do certificado" autocomplete="off">
+              </div>
+            </div>
+            <p class="ajuda" style="margin:8px 0 0;font-size:13px">
+              A senha é usada só nesta consulta, em memória — não é gravada em lugar
+              nenhum. Para as rodadas mensais, ela vai no <code>.env</code>.
             </p>
           `}
         </div>` : ''}
@@ -328,9 +363,14 @@ async function rodarAvulsa() {
       method: 'POST',
       body: JSON.stringify({
         documento: avulsa.documento,
-        certidoes: avulsa.certidoes,
+        // Pedir uma certidão que o modo não busca só produz linha de "manual"
+        // explicando a configuração — ruído no lugar de resposta.
+        certidoes: (avulsa.certidoes ?? Object.keys(CERTIDOES)).filter((id) =>
+          cobertasPor(provedor).includes(id),
+        ),
         municipio: avulsa.municipio || null,
         senha: avulsa.senha || null,
+        certificado: avulsa.certificado || certificadoDe(avulsa.documento) || null,
         provedor,
       }),
     });
@@ -659,6 +699,7 @@ function relerCertificados() {
     estado.certificados = dados.certificados;
     estado.senhas = dados.senhas ?? {};
   estado.locais = dados.locais ?? {};
+  estado.vinculos = dados.vinculos ?? {};
 
     const campo = document.getElementById('pasta-cert');
     const focado = document.activeElement === campo;
@@ -871,6 +912,12 @@ document.addEventListener('input', (e) => {
 });
 
 document.addEventListener('change', async (e) => {
+  if (e.target.id === 'avulsa-cert') {
+    avulsa.certificado = e.target.value;
+    renderAvulsa();
+    return;
+  }
+
   const iArquivo = e.target.dataset.certArquivo;
   if (iArquivo !== undefined) {
     const cliente = estado.config.clientes[Number(iArquivo)];
@@ -886,6 +933,11 @@ document.addEventListener('change', async (e) => {
     }
     gravar({ imediato: true });
     renderCertificados();
+    return;
+  }
+
+  if (e.target.id === 'provedor') {
+    renderAvulsa();
     return;
   }
 

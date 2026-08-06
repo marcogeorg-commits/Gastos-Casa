@@ -23,3 +23,7 @@ clientes.json
 # escritorio; basta rodar de novo para reconstruir.
 relatorios/
 historico/
+
+# Qual .pfx pertence a qual documento. Escolha do operador, nao segredo -- mas
+# e cadastro de cliente, e cadastro de cliente nao vai para o repositorio.
+vinculos.json
