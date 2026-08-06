@@ -218,12 +218,18 @@ export function receitaFormulario(config) {
 
         if (resultado.situacao !== 'indisponivel' || tentativa === tentativas) break;
 
+        // A espera cresce a cada tentativa. O "023" da Receita diz "tente
+        // novamente dentro de alguns minutos" -- e trinta segundos, repetidos,
+        // sao mais batidas no mesmo portal, nao menos. Se for limite de acesso,
+        // insistir no mesmo ritmo so prolonga o limite.
+        const esperaAgora = espera * tentativa;
+
         // Minutos de silêncio parecem travamento. Dizer o que está havendo é o
         // que separa "esperando o portal" de "programa pendurado".
         avisar(
-          `      ${config.nome}: portal indisponível (tentativa ${tentativa}/${tentativas}), aguardando ${Math.round(espera / 1000)}s`,
+          `      ${config.nome}: portal recusou (tentativa ${tentativa}/${tentativas}), aguardando ${Math.round(esperaAgora / 1000)}s`,
         );
-        await aguardar(espera);
+        await aguardar(esperaAgora);
         await pagina.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
       }
 

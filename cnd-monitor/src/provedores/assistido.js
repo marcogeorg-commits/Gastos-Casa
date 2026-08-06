@@ -21,6 +21,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RECEITAS } from '../receitas/index.js';
 import { salvarComprovante } from '../comprovante.js';
+import { lerDoComprovante } from './web.js';
 import { detectarCaptcha, esperarSeletor, primeiroSeletorPresente, primeiroVisivel } from './web.js';
 
 const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -30,6 +31,10 @@ export const nome = 'Assistido (você resolve só o captcha)';
 
 const TEMPO_LIMITE = 60_000;
 const ESPERA_HUMANO = 600_000;
+// Tempo que a janela fica de pe para o operador ler o que o portal respondeu.
+// Generoso de proposito: ler um aviso e mais lento do que se imagina, e o
+// custo de esperar demais e menor que o de perder a mensagem.
+const LEITURA = 300_000;
 
 export function suporta(idCertidao) {
   return Boolean(RECEITAS[idCertidao]);
@@ -177,7 +182,8 @@ async function consultarAgora({ cliente, idCertidao, env = process.env, competen
       resultado.detalhe = `${resultado.detalhe} (o portal usa ${captcha.provedor})`;
     }
 
-    if (resultado.situacao !== 'erro') {
+    // Mesma regra do provedor automatico: houve download, o comprovante fica.
+    if (baixado || resultado.situacao !== 'erro') {
       resultado.arquivo = await salvarComprovante({
         pagina,
         download: baixado,
@@ -187,10 +193,45 @@ async function consultarAgora({ cliente, idCertidao, env = process.env, competen
         idCertidao,
       });
     }
+
+    const doPdf = await lerDoComprovante(resultado.arquivo);
+    if (doPdf) return { ...doPdf, arquivo: resultado.arquivo };
+
+    await deixarLer(pagina, resultado, env);
     return resultado;
   } catch (erro) {
     return { situacao: 'erro', detalhe: `${receita.nome}: ${erro.message}` };
   } finally {
     await contexto.close().catch(() => {});
   }
+}
+
+/**
+ * Nao feche a tela na cara de quem esta olhando.
+ *
+ * Quando a consulta nao da certo, o portal escreve o motivo na propria pagina
+ * -- e a janela sumia em seguida. O operador via um erro passar e ficava sem
+ * saber o que dizia; foi o que aconteceu com o aviso 023 da Receita.
+ *
+ * Fica aberta ate ele fechar. Se ele sair de perto, o prazo encerra sozinho e
+ * a rodada segue: janela esquecida nao pode travar a fila dos outros clientes.
+ */
+export async function deixarLer(pagina, resultado, env = process.env, prazo = LEITURA) {
+  if (resultado.situacao === 'negativa' || resultado.situacao === 'sem_registro') return false;
+  if (env.ASSISTIDO_MANTER_ABERTO === 'nao') return false;
+
+  const limite = Number(env.ASSISTIDO_LEITURA ?? prazo);
+  if (!(limite > 0)) return false;
+
+  console.error(
+    `      A janela ficou aberta para você ler o que o portal respondeu. ` +
+      `Feche-a para seguir (ou aguarde ${Math.round(limite / 1000)}s).`,
+  );
+
+  const ate = Date.now() + limite;
+  while (Date.now() < ate) {
+    if (pagina.isClosed()) return true;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return true;
 }
