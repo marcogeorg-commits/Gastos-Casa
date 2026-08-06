@@ -17,7 +17,12 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { IDS_RECEITAS, RECEITAS } from './receitas/index.js';
-import { IDS_ECAC, LOGIN_ECAC, RECEITAS_ECAC } from './receitas/ecac.js';
+import { IDS_ECAC, LOGIN_ECAC, PASSOS_LOGIN, RECEITAS_ECAC } from './receitas/ecac.js';
+// Reexportado: o inventário saiu daqui para poder servir também ao provedor do
+// e-CAC, mas continua fazendo parte do que a calibração oferece.
+import { inventariar } from './inventario.js';
+
+export { inventariar };
 import { detectarCaptcha, esperarSeletor, primeiroVisivel } from './provedores/web.js';
 import { abrirContexto, autenticado } from './provedores/ecac.js';
 import { PASTA_CERTIFICADOS_PADRAO, carregarConfig } from './config.js';
@@ -48,63 +53,6 @@ export async function esperarApp(pagina, tempoLimite = ESPERA_APP) {
   } catch {
     return false;
   }
-}
-
-/**
- * Inventário dos controles interativos, atravessando shadow DOM.
- *
- * `document.querySelectorAll` não enxerga dentro de shadow roots; componentes do
- * design system do gov.br podem usá-los. Um campo invisível ao inventário mas
- * visível ao Playwright levaria a diagnóstico errado.
- */
-export async function inventariar(pagina) {
-  return pagina.evaluate(() => {
-    const descrever = (el) => ({
-      tag: el.tagName.toLowerCase(),
-      type: el.getAttribute('type'),
-      id: el.id || null,
-      name: el.getAttribute('name'),
-      formcontrolname: el.getAttribute('formcontrolname'),
-      placeholder: el.getAttribute('placeholder'),
-      aria: el.getAttribute('aria-label'),
-      texto: (el.innerText || el.value || '').trim().slice(0, 60) || null,
-      seletor: el.id
-        ? `#${CSS.escape(el.id)}`
-        : el.getAttribute('formcontrolname')
-          ? `${el.tagName.toLowerCase()}[formcontrolname="${el.getAttribute('formcontrolname')}"]`
-          : el.getAttribute('name')
-            ? `${el.tagName.toLowerCase()}[name="${el.getAttribute('name')}"]`
-            : null,
-    });
-
-    const campos = [];
-    const botoes = [];
-    const tagsCustomizadas = new Set();
-
-    const percorrer = (raiz) => {
-      for (const el of raiz.querySelectorAll('*')) {
-        if (el.tagName.includes('-')) tagsCustomizadas.add(el.tagName.toLowerCase());
-        if (el.matches('input, select, textarea') && el.type !== 'hidden') {
-          campos.push(descrever(el));
-        }
-        if (el.matches('button, input[type=submit], a[role=button]')) botoes.push(descrever(el));
-        if (el.shadowRoot) percorrer(el.shadowRoot);
-      }
-    };
-    percorrer(document);
-
-    return {
-      titulo: document.title,
-      campos,
-      botoes,
-      tagsCustomizadas: [...tagsCustomizadas],
-      iframes: [...document.querySelectorAll('iframe')].map((el) => el.src),
-      // Fallback de diagnóstico: se nada foi encontrado, o texto da página diz
-      // se caiu numa tela de erro, de manutenção ou de login.
-      textoVisivel: (document.body?.innerText ?? '').replace(/\s+/g, ' ').trim().slice(0, 600),
-      html: document.documentElement.outerHTML.length,
-    };
-  });
 }
 
 /**
@@ -207,10 +155,31 @@ export async function calibrarEcac(idCertidao, opcoes = {}) {
 
     const inventario = await inventariar(pagina);
     console.log(`\nTítulo: ${inventario.titulo}`);
+
+    // Quando NAO autentica, o que interessa e o caminho de entrada -- e ele e
+    // feito de botoes, nao de links. Listar so os links de servico deixava a
+    // tela de login sem inventario nenhum: era possivel ver que a pagina
+    // carregou e continuar sem saber em que clicar.
+    console.log(`\nBotões (${inventario.botoes.length}):`);
+    for (const b of inventario.botoes) {
+      console.log(`  ${b.seletor ?? `${b.tag}:has-text("${b.texto ?? ''}")`}  ·  ${b.texto ?? b.aria ?? '(sem texto)'}`);
+    }
+
+    console.log(`\nCampos (${inventario.campos.length}):`);
+    for (const c of inventario.campos) {
+      console.log(`  ${c.seletor ?? c.tag}  ·  ${c.texto ?? c.placeholder ?? c.aria ?? '(sem rótulo)'}`);
+    }
+
     console.log(`\nLinks de serviço que casam com a receita:`);
     for (const candidato of receita.caminhoServico) {
       const achou = (await pagina.locator(candidato).count()) > 0;
       console.log(`  ${candidato}: ${achou ? 'OK' : 'não encontrado'}`);
+    }
+
+    console.log(`\nPassos de login que casam:`);
+    for (const passo of PASSOS_LOGIN) {
+      const achou = await primeiroVisivel(pagina, passo.candidatos);
+      console.log(`  ${passo.nome}: ${achou ? 'OK' : 'nenhum candidato visível'}`);
     }
 
     console.log(`\nTexto visível:\n  ${inventario.textoVisivel}`);

@@ -17,6 +17,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { confiarNasCasDoSistema, falhaDeCadeia } from '../ca-sistema.js';
+import { inventariar } from '../inventario.js';
 import { resolverCertificado } from '../certificados.js';
 import { interpretarTexto } from '../situacao.js';
 import { LOGIN_ECAC, ORIGENS_CERTIFICADO, PASSOS_LOGIN, RECEITAS_ECAC } from '../receitas/ecac.js';
@@ -216,10 +217,18 @@ export async function diagnosticar(pagina, limite = 40) {
     .evaluate(() => document.documentElement.outerHTML.length)
     .catch(() => 0);
 
+  // O caminho de entrada e feito de botoes, nao de links. Sem inventaria-los, o
+  // log dizia "nenhum link" numa tela cheia de opcoes -- e a rotina ficava
+  // acusando o certificado por nao achar onde clicar.
+  const botoes = await inventariar(pagina)
+    .then((i) => i.botoes.map((b) => b.seletor ?? `${b.tag}:has-text("${b.texto ?? ''}")`).slice(0, limite))
+    .catch(() => []);
+
   return {
     url: pagina.url(),
     titulo: await pagina.title().catch(() => ''),
     links,
+    botoes,
     texto,
     tamanhoHtml,
     // Portal do governo costuma por o conteudo em iframe; procurar so no
@@ -301,7 +310,10 @@ export async function consultar({ cliente, idCertidao, config = {}, env = proces
       console.error(`      Título: "${onde.titulo}" · HTML com ${onde.tamanhoHtml} caracteres`);
       console.error(`      Texto: ${onde.texto.slice(0, 300) || '(a página está vazia)'}`);
       console.error(`      Links visíveis: ${onde.links.join(' | ') || '(nenhum)'}`);
-      if (onde.quadros.length > 0) console.error(`      Quadros: ${onde.quadros.join(' | ')}`);
+      console.error(`      Botões: ${onde.botoes.join(' | ') || '(nenhum)'}`);
+      // Os quadros do captcha entulham o log e nunca são onde se clica.
+      const quadros = onde.quadros.filter((u) => !/hcaptcha|recaptcha/i.test(u));
+      if (quadros.length > 0) console.error(`      Quadros: ${quadros.join(' | ')}`);
       if (captura) console.error(`      Tela salva em ${captura}`);
       // Tela sem texto nenhum e problema DIFERENTE de tela cheia com menu
       // trocado, e a correcao de uma nao serve para a outra. Separar os dois
