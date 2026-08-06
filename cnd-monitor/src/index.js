@@ -12,12 +12,15 @@ import {
 } from './config.js';
 import { listarCertificados } from './certificados.js';
 import { escolherCertificado, gravarVinculo, lerVinculos } from './vinculos.js';
+import { gravarSenha, temSenha } from './ambiente.js';
+import { lerCertificado } from './certificado-info.js';
+import { perguntarSenha, perguntarTexto } from './senha.js';
 import { limpar } from './documentos.js';
 import { descreverSituacao } from './catalogo.js';
 import { executar, planejar } from './executor.js';
 import { gerarHtml } from './relatorio.js';
 import { carregarAnterior, compararComAnterior, escreverIndice } from './historico.js';
-import { cadeiaDe, rotear } from './provedores/index.js';
+import { PROVEDORES, cadeiaDe, rotear } from './provedores/index.js';
 
 const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -59,14 +62,48 @@ async function anexarCertificado(config, documento, escolhaDoOperador = null) {
 
   // A escolha explicita vence o palpite pelo nome, e fica guardada: o operador
   // so precisa apontar o arquivo de cada cliente uma vez.
-  const arquivo = arquivos.includes(escolhaDoOperador)
+  let arquivo = arquivos.includes(escolhaDoOperador)
     ? escolhaDoOperador
     : escolherCertificado(arquivos, documento, await lerVinculos());
+
+  // Nome de arquivo nem sempre traz o CNPJ -- muita certificadora usa o numero
+  // do pedido. Pelo terminal, com alguem na frente, perguntar qual e resolve
+  // na hora; sem isso a consulta morria com "sem certificado no cadastro" e o
+  // arquivo ali na pasta.
+  if (!arquivo && arquivos.length > 0 && process.stdin.isTTY) {
+    console.log(`\nQual certificado é de ${config.clientes[0].nome}?\n`);
+    arquivos.forEach((nome, i) => console.log(`  ${String(i + 1).padStart(2)}. ${nome}`));
+    console.log('   0. nenhum — seguir sem certificado\n');
+
+    const escolha = Number(await perguntarTexto('Número: ').catch(() => '0'));
+    arquivo = arquivos[escolha - 1] ?? null;
+    if (arquivo) await gravarVinculo(documento, arquivo);
+  }
 
   if (!arquivo) return;
   if (escolhaDoOperador === arquivo) await gravarVinculo(documento, arquivo);
 
-  config.clientes[0].certificado = { arquivo, senhaVariavel: `CERT_${limpar(documento)}` };
+  const variavel = `CERT_${limpar(documento)}`;
+  config.clientes[0].certificado = { arquivo, senhaVariavel: variavel };
+
+  // Rodando pelo terminal, com alguem na frente: pedir a senha aqui e melhor
+  // que mandar a pessoa abrir o painel para fazer a mesma coisa noutra tela.
+  if (!temSenha(variavel) && process.stdin.isTTY) {
+    const { pasta } = await listarCertificados(config.certificados?.pastaPadrao);
+    console.log(`\nCertificado de ${config.clientes[0].nome}: ${arquivo}`);
+
+    const senha = await perguntarSenha('Senha (fica guardada no .env): ').catch(() => '');
+    if (!senha) return;
+
+    const info = await lerCertificado(resolve(pasta, arquivo), senha);
+    if (info.erro) {
+      console.error(`Não deu para abrir o certificado: ${info.erro}. A consulta segue sem ele.`);
+      return;
+    }
+
+    gravarSenha(variavel, senha);
+    console.log(`Senha validada e guardada — ${info.nome ?? 'titular lido'}.\n`);
+  }
 }
 
 export async function principal(argv = process.argv.slice(2), env = process.env) {
@@ -133,6 +170,26 @@ cnd-monitor — consulta mensal de certidões da carteira de clientes
     // certidao do arquivo nao podem sobreviver a um "--provedor web".
     config.provedorPadrao = args.provedor;
     config.provedores = {};
+
+    // Mas nao vale pedir ao provedor o que ele nao faz. `--provedor ecac`
+    // produzia quatro linhas de "o provedor ecac nao atende rfb_pgfn" -- ruido
+    // de configuracao ocupando o lugar da resposta do orgao.
+    const provedor = PROVEDORES[String(args.provedor)];
+    if (provedor?.suporta) {
+      const cobertas = config.certidoesAtivas.filter((id) => provedor.suporta(id));
+      const fora = config.certidoesAtivas.filter((id) => !provedor.suporta(id));
+
+      if (fora.length > 0) {
+        console.log(
+          `Provedor "${args.provedor}" não atende ${fora.length} das certidões pedidas — ` +
+            `consultando só ${cobertas.join(', ')}.`,
+        );
+      }
+      config.certidoesAtivas = cobertas;
+      for (const cliente of config.clientes) {
+        cliente.certidoes = cliente.certidoes.filter((id) => cobertas.includes(id));
+      }
+    }
   }
 
   if (args.simular) {
