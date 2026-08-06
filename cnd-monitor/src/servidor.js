@@ -26,7 +26,8 @@ import { fileURLToPath } from 'node:url';
 import { chamadoDireto } from './executavel.js';
 import { carregarAmbiente, temSenha } from './ambiente.js';
 import { listarCertificados } from './certificados.js';
-import { escolherCertificado, lerVinculos } from './vinculos.js';
+import { escolherCertificado, gravarVinculo, lerVinculos } from './vinculos.js';
+import { lerCertificado, temOpenssl } from './certificado-info.js';
 import { PASTA_CERTIFICADOS_PADRAO, configAvulsa, credenciaisDoAmbiente } from './config.js';
 import { executar } from './executor.js';
 import { descreverSituacao } from './catalogo.js';
@@ -444,6 +445,49 @@ async function tratarApi(req, res, rota, raiz, porta) {
         urlManual: r.urlManual ?? null,
       })),
     });
+    return;
+  }
+
+  // Identifica os certificados da pasta lendo o titular de dentro de cada um.
+  // E a unica forma confiavel de saber de quem e o arquivo: o nome nem sempre
+  // traz o CNPJ, mas o campo CN do certificado sempre traz.
+  if (rota === '/api/certificados/identificar' && req.method === 'POST') {
+    const corpo = await lerCorpo(req);
+
+    if (!(await temOpenssl())) {
+      responderJson(res, 200, {
+        erro: 'O openssl não está disponível nesta máquina — sem ele não dá para ler o titular do certificado.',
+        lidos: [],
+      });
+      return;
+    }
+
+    const config = (await lerJson(resolve(raiz, 'clientes.json'))) ?? {};
+    const { pasta, arquivos } = await listarCertificados(
+      config.certificados?.pastaPadrao ?? PASTA_CERTIFICADOS_PADRAO,
+      raiz,
+    );
+
+    const alvos = corpo.arquivos?.length ? corpo.arquivos.filter((a) => arquivos.includes(a)) : arquivos;
+    const senhas = corpo.senhas ?? {};
+    const senhaGeral = String(corpo.senha ?? '');
+
+    const lidos = [];
+    for (const arquivo of alvos) {
+      const senha = senhas[arquivo] ?? senhaGeral;
+      if (!senha) {
+        lidos.push({ arquivo, erro: 'falta a senha' });
+        continue;
+      }
+
+      const info = await lerCertificado(resolve(pasta, arquivo), senha);
+      lidos.push({ arquivo, ...info });
+
+      // Ler ja e prova de quem e o dono: o vinculo fica gravado sozinho.
+      if (info.documento) await gravarVinculo(info.documento, arquivo, raiz);
+    }
+
+    responderJson(res, 200, { pasta, lidos });
     return;
   }
 

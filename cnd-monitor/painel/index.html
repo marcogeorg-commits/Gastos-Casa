@@ -218,6 +218,8 @@ function gravar({ imediato = false } = {}) {
 // ---------------------------------------------------------------------------
 // Aba: consulta rápida — um documento, resposta na hora, sem cadastrar
 // ---------------------------------------------------------------------------
+const importacao = { senha: '', lendo: false, lidos: null, erro: null };
+
 const avulsa = {
   documento: '', certidoes: null, municipio: '', senha: '', certificado: '',
   rodando: false, saida: null,
@@ -559,6 +561,39 @@ function renderClientes() {
 // ---------------------------------------------------------------------------
 // Aba: certificados
 // ---------------------------------------------------------------------------
+/** Tabela do que foi lido de dentro dos certificados. */
+function secaoIdentificados(lidos) {
+  const ok = lidos.filter((l) => l.documento);
+  const cadastrados = new Set((estado.config?.clientes ?? []).map((c) => limpar(c.documento)));
+  const novos = ok.filter((l) => !cadastrados.has(l.documento));
+
+  const linha = (l) => `
+    <tr>
+      <td>${esc(l.arquivo)}</td>
+      <td>${l.documento ? esc(l.nome ?? '—') : `<span class="selo selo--warning">
+          <span class="selo__icone">▲</span>${esc(l.erro ?? 'não lido')}</span>`}</td>
+      <td class="num">${l.documento ? esc(formatar(l.documento)) : '—'}</td>
+      <td class="num">${l.validoAte ? esc(l.validoAte.split('-').reverse().join('/')) : '—'}</td>
+    </tr>`;
+
+  return `
+    <div class="rolagem" style="margin-top:18px">
+      <table>
+        <thead><tr><th>Arquivo</th><th>Titular</th><th>Documento</th><th>Vence</th></tr></thead>
+        <tbody>${lidos.map(linha).join('')}</tbody>
+      </table>
+    </div>
+    <div class="acoes">
+      <span class="doc">${ok.length} de ${lidos.length} identificados${
+        novos.length ? ` · ${novos.length} ainda fora do cadastro` : ' · todos já cadastrados'
+      }</span>
+      <span class="empurra"></span>
+      ${novos.length
+        ? `<button class="principal" id="imp-cadastrar">Cadastrar ${novos.length} cliente(s)</button>`
+        : ''}
+    </div>`;
+}
+
 function renderCertificados() {
   const alvo = document.getElementById('painel-certificados');
   const cert = estado.certificados ?? { pasta: null, arquivos: [], erro: null };
@@ -656,6 +691,36 @@ function renderCertificados() {
                 ? `${cert.arquivos.length} certificado(s) em <code>${esc(cert.pasta)}</code>`
                 : 'Informe a pasta onde estão os arquivos <code>.pfx</code>. Ela deve ficar fora deste projeto — o padrão <code>../Certificados</code> é a pasta irmã.'}
         </p>
+      </div>
+    </section>
+
+    <section>
+      <h2>Identificar os certificados</h2>
+      <div class="cartao cartao--ar">
+        <p class="ajuda">
+          O certificado digital carrega o <strong>CNPJ e a razão social</strong> do titular
+          por dentro (padrão ICP-Brasil). Informe a senha e o programa lê de cada arquivo
+          quem é o dono, sem você precisar digitar nada — e já monta o cadastro.
+          A senha é usada só para ler; não fica gravada.
+        </p>
+
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+          <div style="flex:0 1 260px">
+            <input type="password" id="imp-senha" value="${esc(importacao.senha)}"
+                   placeholder="Senha dos certificados" autocomplete="off"
+                   ${importacao.lendo ? 'disabled' : ''}>
+          </div>
+          <button class="principal" id="imp-ler" ${importacao.lendo || !importacao.senha ? 'disabled' : ''}>
+            ${importacao.lendo ? 'Lendo…' : `Ler os ${cert.arquivos.length} certificados`}
+          </button>
+        </div>
+        <p class="ajuda" style="margin:10px 0 0;font-size:13px">
+          Se cada cliente tiver uma senha diferente, leia primeiro os que compartilham
+          uma senha e repita para os demais — o que já foi identificado é mantido.
+        </p>
+
+        ${importacao.erro ? `<p class="erro-campo" style="margin-top:12px">${esc(importacao.erro)}</p>` : ''}
+        ${importacao.lidos ? secaoIdentificados(importacao.lidos) : ''}
       </div>
     </section>
 
@@ -875,6 +940,13 @@ document.addEventListener('input', (e) => {
     return;
   }
 
+  if (alvo.id === 'imp-senha') {
+    importacao.senha = alvo.value;
+    const botao = document.getElementById('imp-ler');
+    if (botao) botao.disabled = !alvo.value;
+    return;
+  }
+
   if (alvo.id === 'pasta-cert') {
     estado.config.certificados = { pastaPadrao: alvo.value };
     gravar();
@@ -1003,6 +1075,45 @@ document.addEventListener('click', async (e) => {
   }
 
   if (e.target.id === 'importar') { document.getElementById('arquivo').click(); return; }
+
+  if (e.target.id === 'imp-ler') {
+    importacao.lendo = true;
+    importacao.erro = null;
+    renderCertificados();
+    try {
+      const r = await api('/api/certificados/identificar', {
+        method: 'POST',
+        body: JSON.stringify({ senha: importacao.senha }),
+      });
+      importacao.erro = r.erro ?? null;
+      // Mantém o que já tinha sido identificado com outra senha.
+      const antes = new Map((importacao.lidos ?? []).filter((l) => l.documento).map((l) => [l.arquivo, l]));
+      importacao.lidos = (r.lidos ?? []).map((l) => (l.documento ? l : antes.get(l.arquivo) ?? l));
+    } catch (erro) {
+      importacao.erro = erro.message;
+    } finally {
+      importacao.lendo = false;
+      await carregar();
+    }
+    return;
+  }
+
+  if (e.target.id === 'imp-cadastrar') {
+    const cadastrados = new Set((estado.config.clientes ?? []).map((c) => limpar(c.documento)));
+    const novos = (importacao.lidos ?? [])
+      .filter((l) => l.documento && !cadastrados.has(l.documento))
+      .map((l) => ({
+        nome: l.nome ?? formatar(l.documento),
+        documento: formatar(l.documento),
+        certificado: { arquivo: l.arquivo, senhaVariavel: `CERT_${l.documento}` },
+      }));
+
+    estado.config.clientes.push(...novos);
+    gravar({ imediato: true });
+    renderTudo();
+    avisar(`${novos.length} cliente(s) cadastrado(s) a partir dos certificados.`);
+    return;
+  }
 
   if (e.target.id === 'copiar-env') {
     const texto = e.target.closest('section').querySelector('pre').textContent;
