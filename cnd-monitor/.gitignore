@@ -1,10 +1,5 @@
 node_modules/
 
-# `relatorios/ultimo.html` e uma copia por conveniencia, reescrita a cada
-# execucao. Versiona-la fazia todo `git pull` conflitar depois de uma rodada
-# local. Os relatorios por competencia continuam versionados.
-relatorios/ultimo.html
-
 # `calibracao/` NAO entra aqui de proposito: o inventario e a captura da tela do
 # formulario, gerados por `npm run calibrar`, sao feitos para serem commitados e
 # revisados -- sao o insumo para ajustar os seletores em src/receitas/.
@@ -15,3 +10,16 @@ relatorios/ultimo.html
 calibracao/falha-*
 # Calibracao do e-CAC: a captura mostra a tela autenticada de um cliente.
 calibracao/ecac-*
+
+# Senhas dos certificados digitais. Nunca versionar: com o .pfx correspondente
+# elas permitem assinar como o cliente. Ver src/ambiente.js.
+.env
+
+# Cadastro real da carteira: CNPJ e CPF de terceiros, reescrito pelo painel a
+# cada edicao. O modelo versionado e o clientes.exemplo.json.
+clientes.json
+
+# Derivados de cada rodada -- e situacao fiscal de cliente. Ficam no disco do
+# escritorio; basta rodar de novo para reconstruir.
+relatorios/
+historico/

@@ -1,0 +1,248 @@
+/* ===========================================================================
+ * Identidade ABC.inc & EMBRALOT
+ *
+ * Fonte unica de estilo do projeto: o painel carrega este arquivo por <link>,
+ * e o relatorio o embute inteiro (precisa abrir sozinho, fora do servidor, e
+ * ser anexavel num e-mail). Mexer aqui muda os dois.
+ *
+ * As cores saem do papel timbrado: a faixa creme do cabecalho, o preto do
+ * logotipo e o fio dourado-oliva da assinatura. O resto e neutro de proposito
+ * -- num relatorio fiscal a unica cor que deve chamar atencao e a do problema.
+ * ======================================================================== */
+
+:root {
+  color-scheme: light dark;
+
+  /* Papel timbrado */
+  --osso:        #f2eee5;  /* faixa creme do cabecalho */
+  --osso-claro:  #faf8f3;
+  --tinta:       #0a0a0a;  /* preto do logotipo */
+  --ouro:        #a79e6b;  /* fio da assinatura */
+  --ouro-fundo:  #6e6738;  /* mesma familia, com contraste para texto */
+
+  --plano:       #ffffff;
+  --superficie:  #ffffff;
+  --texto:       var(--tinta);
+  --texto-2:     #56544d;
+  --texto-3:     #8a877d;
+  --linha:       #e6e2d7;
+  --borda:       rgba(10, 10, 10, 0.10);
+  --lavagem:     rgba(167, 158, 107, 0.07);
+  --realce:      rgba(167, 158, 107, 0.16);
+
+  /* Estado. Sempre acompanhados de icone e rotulo -- ninguem deve depender
+   * da cor para saber se a certidao esta negativa. */
+  --good:        #1a7f37;
+  --warning:     #9a6700;
+  --serious:     #bc4c00;
+  --critical:    #b32b23;
+
+  --sombra: 0 1px 2px rgba(10, 10, 10, 0.04), 0 8px 24px -12px rgba(10, 10, 10, 0.10);
+  --raio: 4px;
+
+  --serifada: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --geometrica: Futura, "Avenir Next", "Century Gothic", "URW Gothic",
+                system-ui, -apple-system, sans-serif;
+  --texto-fonte: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-tema="claro"]) {
+    --osso: #16150f; --osso-claro: #121210;
+    --plano: #0c0c0b; --superficie: #141413;
+    --texto: #f5f3ec; --texto-2: #b8b5a8; --texto-3: #85827a;
+    --linha: #2a2924; --borda: rgba(255, 255, 255, 0.11);
+    --lavagem: rgba(167, 158, 107, 0.08);
+    --realce: rgba(167, 158, 107, 0.18);
+    --ouro-fundo: #c4ba85;
+    --good: #4ac26b; --warning: #d9a441; --serious: #f08a4b; --critical: #f2695e;
+    --sombra: 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px -12px rgba(0, 0, 0, 0.7);
+  }
+}
+:root[data-tema="escuro"] {
+  --osso: #16150f; --osso-claro: #121210;
+  --plano: #0c0c0b; --superficie: #141413;
+  --texto: #f5f3ec; --texto-2: #b8b5a8; --texto-3: #85827a;
+  --linha: #2a2924; --borda: rgba(255, 255, 255, 0.11);
+  --lavagem: rgba(167, 158, 107, 0.08);
+  --realce: rgba(167, 158, 107, 0.18);
+  --ouro-fundo: #c4ba85;
+  --good: #4ac26b; --warning: #d9a441; --serious: #f08a4b; --critical: #f2695e;
+  --sombra: 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px -12px rgba(0, 0, 0, 0.7);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--plano);
+  color: var(--texto);
+  font: 16px/1.6 var(--texto-fonte);
+  -webkit-font-smoothing: antialiased;
+}
+
+.folha { max-width: 1180px; margin: 0 auto; padding: 0 32px; }
+@media (max-width: 640px) { .folha { padding: 0 18px; } }
+
+/* --- Timbre ------------------------------------------------------------- */
+
+.timbre {
+  background: var(--osso);
+  padding: 38px 0 34px;
+  margin-bottom: 40px;
+}
+.timbre__interno {
+  max-width: 1180px; margin: 0 auto; padding: 0 32px;
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 20px;
+}
+@media (max-width: 640px) { .timbre__interno { padding: 0 18px; } }
+
+/* A faixa acompanha o tema (--osso escurece junto), então a marca só precisa
+ * seguir a cor de texto vigente. */
+.marca { display: flex; align-items: baseline; gap: 9px; color: var(--texto); }
+
+.marca__logo { height: 34px; width: auto; display: block; }
+.marca__abc {
+  font-family: var(--geometrica);
+  font-size: 30px; font-weight: 600; letter-spacing: -0.015em; line-height: 1;
+}
+.marca__inc { font-style: italic; font-weight: 500; letter-spacing: 0.01em; }
+.marca__e { font-size: 15px; font-weight: 400; opacity: 0.75; }
+.marca__embralot {
+  font-family: var(--geometrica);
+  font-size: 30px; font-weight: 300; letter-spacing: 0.005em; line-height: 1;
+}
+
+/* Assinatura em versalete espacado, como o endereco do rodape do timbrado. */
+.assinatura {
+  font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+  color: var(--texto-2);
+}
+
+.titulo-pagina { margin: 0 0 34px; }
+.titulo-pagina h1 {
+  margin: 0; font-family: var(--serifada); font-weight: 400;
+  font-size: 34px; line-height: 1.15; letter-spacing: -0.01em;
+}
+.titulo-pagina .sub { margin: 8px 0 0; color: var(--texto-2); font-size: 16px; }
+.titulo-pagina .meta { margin: 4px 0 0; color: var(--texto-3); font-size: 13px; }
+
+/* O fio dourado da assinatura, usado como divisor. */
+.fio { height: 1px; border: 0; margin: 0; background: var(--ouro); opacity: 0.55; }
+.fio--curto { width: 54px; opacity: 1; margin-bottom: 20px; }
+
+/* --- Blocos ------------------------------------------------------------- */
+
+section { margin-bottom: 40px; }
+
+h2 {
+  margin: 0 0 14px;
+  font-family: var(--geometrica);
+  font-size: 12px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--texto-2);
+}
+h2 .conta { color: var(--texto-3); font-weight: 400; letter-spacing: 0.08em; }
+
+.cartao {
+  background: var(--superficie);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  box-shadow: var(--sombra);
+  padding: 6px 22px;
+}
+.cartao--ar { padding: 24px 22px; }
+.ajuda { margin: 0 0 16px; color: var(--texto-2); font-size: 14px; max-width: 74ch; }
+
+/* --- Indicadores -------------------------------------------------------- */
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 1px;
+         background: var(--borda); border: 1px solid var(--borda);
+         border-radius: var(--raio); overflow: hidden; margin-bottom: 40px; }
+.tile { background: var(--superficie); padding: 22px 24px; }
+.tile__valor {
+  font-family: var(--serifada); font-size: 40px; font-weight: 400;
+  line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums;
+}
+.tile--good .tile__valor { color: var(--good); }
+.tile--critical .tile__valor { color: var(--critical); }
+.tile__rotulo { margin-top: 10px; font-size: 13px; color: var(--texto-2); line-height: 1.4; }
+.tile__apoio { margin-top: 3px; font-size: 12px; color: var(--texto-3); }
+
+/* --- Selos de situacao -------------------------------------------------- */
+
+.selo { display: inline-flex; align-items: center; gap: 6px;
+        font-size: 13px; font-weight: 500; white-space: nowrap; color: var(--texto); }
+.selo__icone { font-size: 11px; line-height: 1; }
+.selo--good .selo__icone { color: var(--good); }
+.selo--warning .selo__icone { color: var(--warning); }
+.selo--serious .selo__icone { color: var(--serious); }
+.selo--critical .selo__icone { color: var(--critical); }
+.selo--neutro, .selo--neutro .selo__icone { color: var(--texto-3); font-weight: 400; }
+
+/* --- Tabelas ------------------------------------------------------------ */
+
+.rolagem { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+thead th {
+  text-align: left; padding: 12px 14px; vertical-align: bottom;
+  border-bottom: 1px solid var(--ouro);
+  font-family: var(--geometrica); font-weight: 600;
+  font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--texto-2);
+  white-space: nowrap;
+}
+.col__orgao { display: block; font-weight: 400; letter-spacing: 0.04em;
+              text-transform: none; font-size: 11px; color: var(--texto-3); margin-top: 2px; }
+tbody tr { border-bottom: 1px solid var(--linha); }
+tbody tr:last-child { border-bottom: 0; }
+tbody tr:hover { background: var(--lavagem); }
+.celula, .celula-cliente, tbody td, tbody th { padding: 12px 14px; vertical-align: middle; text-align: left; }
+.celula-cliente { font-weight: 500; }
+.celula-cliente__nome { display: block; }
+.celula-cliente__doc, .doc {
+  display: block; font-weight: 400; font-size: 12px;
+  color: var(--texto-3); font-variant-numeric: tabular-nums;
+}
+.celula__validade { display: block; margin-top: 3px; font-size: 11px;
+                    color: var(--texto-3); font-variant-numeric: tabular-nums; }
+.num { font-variant-numeric: tabular-nums; }
+
+/* --- Listas de pendencia ------------------------------------------------ */
+
+.pendencias { list-style: none; margin: 0; padding: 0; }
+.pend { padding: 18px 0; border-bottom: 1px solid var(--linha); }
+.pend:last-child { border-bottom: 0; }
+.pend__topo { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+.pend__cliente { font-weight: 600; }
+.pend__doc { color: var(--texto-3); font-size: 13px; font-variant-numeric: tabular-nums; }
+.pend__certidao { margin-top: 3px; font-size: 13px; color: var(--texto-2); }
+.pend__detalhe { margin: 8px 0 0; font-size: 14px; color: var(--texto-2); max-width: 78ch; }
+.pend__tecnico { margin: 5px 0 0; font-size: 12px; color: var(--texto-3);
+                 word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.pend__link { font-size: 13px; color: var(--ouro-fundo); }
+
+.marca-mudanca {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 3px 9px; border-radius: 999px; border: 1px solid var(--borda); color: var(--texto-2);
+}
+.marca-mudanca--piorou { color: var(--critical); border-color: var(--critical); }
+.marca-mudanca--melhorou { color: var(--good); border-color: var(--good); }
+
+.manual { padding: 18px 0; border-bottom: 1px solid var(--linha); }
+.manual:last-child { border-bottom: 0; }
+.fichas { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 10px; }
+.ficha { font-size: 12px; color: var(--texto-2); background: var(--lavagem);
+         border: 1px solid var(--borda); border-radius: 999px; padding: 4px 11px; }
+
+.avisos { list-style: none; margin: 0; padding: 16px 0; }
+.avisos li { display: flex; gap: 10px; padding: 5px 0; font-size: 14px; color: var(--texto-2); }
+.avisos li::before { content: "▲"; color: var(--warning); font-size: 10px; line-height: 1.8; }
+
+.legenda { display: flex; flex-wrap: wrap; gap: 20px; padding: 18px 0; }
+
+/* --- Rodape ------------------------------------------------------------- */
+
+.rodape { margin-top: 56px; padding: 30px 0 40px; border-top: 1px solid var(--linha); }
+.rodape__interno { display: flex; justify-content: space-between; align-items: flex-end;
+                   flex-wrap: wrap; gap: 16px; }
+.rodape p { margin: 0; color: var(--texto-3); font-size: 12px; max-width: 62ch; line-height: 1.6; }

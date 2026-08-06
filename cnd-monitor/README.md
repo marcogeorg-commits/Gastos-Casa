@@ -8,74 +8,93 @@ gratuito `web` acrescenta o Playwright, como dependência opcional.
 
 ```bash
 cd cnd-monitor
-cp clientes.exemplo.json clientes.json   # e substitua pelos dados reais
-npm test
-npm run consultar                        # usa o provedor "mock" por padrão
+npm start          # abre http://localhost:8787 no navegador
 ```
+
+É só isso. O painel cadastra os clientes, dispara a consulta e mostra o
+resultado — nenhum JSON editado à mão, nenhum comando decorado.
+
+**Tudo roda nesta máquina.** Não há servidor, nuvem nem agendamento remoto. É
+essa a condição para usar os certificados digitais dos clientes: um `.pfx` mais
+a senha permitem assinar como o titular, e isso não deve viajar.
 
 Saídas:
 
 | Arquivo | Conteúdo |
 |---|---|
-| `relatorios/AAAA-MM.html` | relatório da competência |
+| `relatorios/AAAA-MM.html` | relatório da competência, com o timbre da casa |
 | `relatorios/ultimo.html` | cópia da última execução |
 | `historico/AAAA-MM.json` | resultado bruto, base da comparação entre meses |
 
 ## Painel
 
-Interface para cadastrar clientes e acompanhar as competências sem editar JSON
-na mão:
+Quatro abas, em `http://localhost:8787`:
 
-```bash
-npm run painel      # http://localhost:8787
-```
-
+- **Situação** — matriz cliente × certidão da última rodada, com o que o órgão
+  respondeu no *tooltip*, e os indicadores do mês.
 - **Clientes** — cadastro com validação de CPF/CNPJ enquanto se digita, escolha
   das certidões por cliente e marcação de ativo/inativo. Certidão que não se
   aplica ao tipo de documento aparece esmaecida; cliente sem lista própria herda
   a da configuração, e o primeiro clique passa a valer só para ele.
-- **Situação atual** — matriz cliente × certidão da última execução, com o
-  detalhe devolvido pelo órgão no *tooltip*.
+- **Certificados** — associa o `.pfx` de cada cliente e diz, sem mostrar senha
+  nenhuma, quais senhas ainda faltam no `.env`.
 - **Competências** — uma linha por execução, com link para cada relatório.
 
-O painel **não grava em disco**: você baixa o `clientes.json` e substitui o
-arquivo. Enquanto isso, o rascunho fica no navegador — fechar a aba com
-alterações não salvas dispara aviso.
+O botão **Consultar agora** roda a rotina como processo separado e transmite a
+saída ao vivo. Fechar a aba não interrompe: ao reabrir, o painel reencontra a
+rodada em andamento.
 
-Existe um servidor local porque `file://` bloqueia `fetch` de arquivos vizinhos:
-aberto com dois cliques, o painel não conseguiria ler o histórico. Ele serve só
-a pasta do `cnd-monitor`, só em `localhost`, e não escreve nada.
+As alterações do cadastro são **gravadas direto em `clientes.json`**, com a
+versão anterior guardada em `historico/clientes.anterior.json`.
 
-### Se o `git pull` reclamar de alterações locais
+### Por que existe um servidor local
 
-As execuções gravam em `relatorios/` e `historico/`, e o agendamento no GitHub
-Actions versiona os mesmos caminhos. Rodar a mesma competência nos dois lugares
-deixa o arquivo local diferente do remoto, e o `git` recusa o merge:
+Aberto com dois cliques (`file://`), o painel não conseguiria ler o histórico
+nem gravar o cadastro. O servidor resolve isso — e, como agora ele escreve
+arquivo e executa processo, foi construído desconfiado:
 
-```bash
-git checkout -- cnd-monitor/relatorios cnd-monitor/historico
-git pull
-```
-
-Descartar é seguro: o conteúdo é derivado — basta rodar de novo. Para
-experimentar sem tocar nos arquivos versionados, use uma competência própria
-(`--competencia teste`) ou outra pasta (`--saida /tmp/cnd`).
+- escuta só em `127.0.0.1`, nunca na rede;
+- toda rota de escrita exige um token sorteado a cada inicialização, que o
+  servidor injeta na própria página — outra aba do navegador não o tem;
+- confere a origem do pedido, para uma página aberta ao lado não conseguir
+  mandar apagar o cadastro;
+- `.env`, `.git` e as capturas de calibração **não são servidos** como arquivo
+  estático, ainda que estejam dentro da pasta;
+- devolve se a senha existe, nunca a senha.
 
 ## Onde guardar o quê
 
 | Dado | Onde | Por quê |
 |---|---|---|
-| CNPJ/CPF dos clientes | `clientes.json`, **repositório privado** | a rotina precisa ler; são dados cadastrais, não credenciais |
-| Certidões emitidas (PDF) | `certidoes/`, no repositório | é o comprovante que você vai anexar em licitação ou banco |
+| CNPJ/CPF dos clientes | `clientes.json`, nesta máquina | a rotina precisa ler; são dados cadastrais, não credenciais |
+| Certidões emitidas (PDF) | `certidoes/` | é o comprovante que você vai anexar em licitação ou banco |
 | Capturas de falha | `calibracao/falha-*`, **fora do versionamento** | mostram tela de consulta real, com dado fiscal |
-| Token da Infosimples / chaves SERPRO | **GitHub Secrets** | credencial nunca entra no código |
-| **Certificado digital A1 (`.pfx` + senha)** | **nunca no repositório** | quem tem o arquivo e a senha assume a identidade fiscal do cliente |
+| **Certificado digital A1 (`.pfx`)** | **pasta sua, fora do projeto** | quem tem o arquivo e a senha assume a identidade fiscal do cliente |
+| **Senha do certificado** | `.env`, ignorado pelo Git | separada do `.pfx`: um vazamento sozinho não assina nada |
+
+### O certificado e a senha
+
+O painel, na aba **Certificados**, guarda apenas duas coisas no cadastro: o
+**nome do arquivo** e o **nome da variável** que carrega a senha. A senha em si
+nunca passa pelo navegador nem entra em `clientes.json`.
+
+```bash
+cp .env.exemplo .env       # o Git ignora .env
+# uma linha por cliente:
+# CERT_ALFA_COMERCIO=senha-do-certificado
+```
+
+O painel lista exatamente quais variáveis ainda faltam e oferece as linhas
+prontas para colar. O arquivo é ajustado para `0600` — legível só pelo seu
+usuário — a cada inicialização.
 
 Sobre o A1: um `.pfx` commitado continua no histórico do Git mesmo depois de
-apagado, e qualquer pessoa com acesso ao repositório — hoje ou no futuro — pode
-assinar como aquele cliente. Se o CADIN federal entrar na automação (ele exige
-e-CAC com certificado e procuração), o caminho é rodar na máquina do escritório,
-com o certificado no chaveiro do sistema, e não no GitHub Actions.
+apagado, e qualquer pessoa com acesso ao repositório — hoje ou daqui a cinco
+anos — pode assinar como aquele cliente. Por isso `src/certificados.js` **recusa**
+um certificado que esteja dentro da pasta do projeto, em vez de apenas avisar.
+
+Se um dia este repositório for para o GitHub, ele precisa ser **privado**: o
+`clientes.json` tem CNPJ e CPF de terceiros.
 
 ## Comparação mês a mês
 
@@ -147,13 +166,17 @@ Um `.pfx` mais a senha permitem **assinar como o cliente**. Por isso:
 - **Certificado dentro do repositório é recusado.** Commitado uma vez, fica no
   histórico do Git para sempre, ao alcance de quem tiver acesso hoje ou daqui a
   cinco anos.
-- **Senha no cadastro é recusada.** O `clientes.json` é versionado.
+- **Senha no cadastro é recusada.** O `clientes.json` circula: vai para backup,
+  é aberto por engano numa reunião, é copiado para outra máquina. Senha ali é
+  senha em texto aberto, e a peneira do painel a descarta mesmo se enviada.
 - **Sessão não autenticada é detectada** antes de ler qualquer coisa: sem essa
   checagem, o texto da tela de login viraria "resultado" no relatório.
 
-Rode o `ecac` na máquina do escritório, com os certificados num cofre fora do
-projeto. **Nunca no GitHub Actions** — subir 20 certificados de clientes para um
-runner na nuvem é risco desproporcional ao problema que resolve.
+Rode o `ecac` na máquina do escritório, com os certificados numa pasta fora do
+projeto. O provedor **recusa rodar em integração contínua** (`CI` ou
+`GITHUB_ACTIONS` no ambiente): subir 20 certificados de clientes para um runner
+na nuvem é risco desproporcional ao problema que resolve, e documentar "não faça
+isso" não impede que aconteça.
 
 ### Por que o CADIN federal era manual
 
@@ -297,16 +320,15 @@ Outras limitações honestas:
 
 - Os seletores da **CND Federal foram calibrados** contra o portal real. Os de
   FGTS, CNDT e SEFAZ/SC ainda não — calibre antes de confiar (abaixo).
-- Runners do GitHub Actions usam IPs de datacenter, que portais públicos às vezes
-  bloqueiam. Se o agendamento falhar por isso, rode o `web` na máquina do
-  escritório (ou num runner self-hosted) e deixe o Actions para o provedor de API.
+- Portais públicos às vezes bloqueiam IPs de datacenter. Rodando na máquina do
+  escritório — que é como este projeto funciona — o problema não se apresenta.
 - Quando um seletor não casa ou a resposta não é reconhecível, o resultado é
   `erro` com o texto encontrado — a rotina nunca chuta uma situação.
 
 #### Calibrar os seletores
 
-De uma máquina com acesso aos portais (a sua; nem o ambiente do agente nem os
-runners do Actions alcançam esses sites):
+Da sua máquina, que é a única com acesso aos portais (o ambiente do agente não
+alcança esses sites):
 
 ```bash
 cd ~/Gastos-Casa/cnd-monitor          # os comandos abaixo dependem desta pasta
@@ -408,16 +430,22 @@ emitidaEm, validaAte, pdfUrl }`, com `situacao` entre as chaves de `SITUACOES`.
 - Cadastro inválido não derruba a rodada: o cliente é ignorado e vira aviso no
   topo do relatório.
 
-## Execução agendada
+## Repetir todo mês
 
-`.github/workflows/cnd-mensal.yml` roda **dia 1º às 08:00 (BRT)**, publica o
-relatório como artefato e versiona `relatorios/` e `historico/` no repositório.
-Também aceita disparo manual (*Run workflow*) com competência e provedor.
+Não há agendamento automático, de propósito: a consulta pode precisar do
+certificado digital e de um navegador visível, e uma tarefa que dispara sozinha
+com essas duas coisas é pior que um lembrete.
 
-Configure os segredos em *Settings → Secrets and variables → Actions*:
-`INFOSIMPLES_TOKEN`, `INFOSIMPLES_ENDPOINTS`, `SERPRO_CONSUMER_KEY`,
-`SERPRO_CONSUMER_SECRET`. Sem segredo, o provedor correspondente marca as
-consultas como falha e diz qual variável falta — a rodada continua.
+Abra o painel no primeiro dia útil do mês e clique em **Consultar agora**. Se
+quiser um empurrão, um lembrete no calendário resolve. Para agendar mesmo assim
+na sua máquina (`launchd` no macOS, `cron` no Linux), o comando é:
+
+```bash
+cd ~/Gastos-Casa/cnd-monitor && npm run consultar
+```
+
+Ele lê o `.env` sozinho, então as senhas dos certificados funcionam mesmo fora
+do seu terminal.
 
 ## Linha de comando
 

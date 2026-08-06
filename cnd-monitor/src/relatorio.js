@@ -1,5 +1,6 @@
 import { CATALOGO, descreverSituacao } from './catalogo.js';
 import { descreverMudanca } from './historico.js';
+import { CSS_MARCA, SITE, logoEmbutido, timbre } from './marca.js';
 
 const MESES = [
   'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
@@ -208,7 +209,7 @@ function secaoMudancas(comparacao) {
           <div class="pend__topo">
             <span class="pend__cliente">${esc(item.cliente)}</span>
             <span class="pend__doc">${esc(item.documento)}</span>
-            <span class="marca marca--${m.tipo}">${esc(ROTULO_MUDANCA[m.tipo])}</span>
+            <span class="marca-mudanca marca-mudanca--${m.tipo}">${esc(ROTULO_MUDANCA[m.tipo])}</span>
             ${selo(m.atual?.situacao ?? m.anterior.situacao)}
           </div>
           <div class="pend__certidao">${esc(item.certidaoNome)}</div>
@@ -224,7 +225,7 @@ function secaoMudancas(comparacao) {
           <div class="pend__topo">
             <span class="pend__cliente">${esc(item.cliente)}</span>
             <span class="pend__doc">${esc(item.documento)}</span>
-            <span class="marca marca--${tipo}">${esc(ROTULO_MUDANCA[tipo])}</span>
+            <span class="marca-mudanca marca-mudanca--${tipo}">${esc(ROTULO_MUDANCA[tipo])}</span>
           </div>
           <p class="pend__detalhe">${
             tipo === 'novo'
@@ -293,172 +294,25 @@ export function gerarHtml({ competencia, execucao, config, comparacao = null }) 
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Monitor de Certidões — ${esc(competenciaPorExtenso(competencia))}</title>
-<style>
-  :root {
-    color-scheme: light dark;
-    --plano: #f9f9f7;
-    --surface: #fcfcfb;
-    --ink: #0b0b0b;
-    --ink-2: #52514e;
-    --ink-mudo: #898781;
-    --linha: #e1e0d9;
-    --borda: rgba(11, 11, 11, 0.10);
-    --good: #0ca30c;
-    --warning: #fab219;
-    --serious: #ec835a;
-    --critical: #d03b3b;
-    --lavagem: rgba(11, 11, 11, 0.035);
+<style>${CSS_MARCA}
+  /* Só do relatório: ele é impresso e arquivado. */
+  @media print {
+    .timbre { background: #f2eee5 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    section { break-inside: avoid; }
+    .rodape { border-top: 1px solid #e6e2d7; }
   }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --plano: #0d0d0d;
-      --surface: #1a1a19;
-      --ink: #ffffff;
-      --ink-2: #c3c2b7;
-      --ink-mudo: #898781;
-      --linha: #2c2c2a;
-      --borda: rgba(255, 255, 255, 0.10);
-      --lavagem: rgba(255, 255, 255, 0.045);
-    }
-  }
-  :root[data-theme="dark"] {
-    --plano: #0d0d0d;
-    --surface: #1a1a19;
-    --ink: #ffffff;
-    --ink-2: #c3c2b7;
-    --ink-mudo: #898781;
-    --linha: #2c2c2a;
-    --borda: rgba(255, 255, 255, 0.10);
-    --lavagem: rgba(255, 255, 255, 0.045);
-  }
-
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    padding: 32px 20px 64px;
-    background: var(--plano);
-    color: var(--ink);
-    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
-  }
-  .folha { max-width: 1100px; margin: 0 auto; }
-
-  header { margin-bottom: 28px; }
-  h1 { margin: 0 0 4px; font-size: 26px; letter-spacing: -0.01em; }
-  .sub { margin: 0; color: var(--ink-2); font-size: 15px; }
-  .meta { margin-top: 6px; color: var(--ink-mudo); font-size: 13px; }
-
-  .tiles {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 12px;
-    margin-bottom: 28px;
-  }
-  .tile {
-    background: var(--surface);
-    border: 1px solid var(--borda);
-    border-radius: 10px;
-    padding: 16px 18px;
-  }
-  .tile__valor { font-size: 34px; font-weight: 600; line-height: 1.1; }
-  .tile--good .tile__valor { color: var(--good); }
-  .tile--critical .tile__valor { color: var(--critical); }
-  .tile__rotulo { margin-top: 6px; font-size: 14px; color: var(--ink-2); }
-  .tile__apoio { margin-top: 2px; font-size: 12px; color: var(--ink-mudo); }
-
-  section { margin-bottom: 28px; }
-  h2 { font-size: 17px; margin: 0 0 12px; }
-  .cartao {
-    background: var(--surface);
-    border: 1px solid var(--borda);
-    border-radius: 10px;
-    padding: 4px 18px;
-  }
-
-  .selo {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 13px;
-    font-weight: 500;
-    white-space: nowrap;
-    color: var(--ink);
-  }
-  .selo__icone { font-size: 12px; line-height: 1; }
-  .selo--good .selo__icone { color: var(--good); }
-  .selo--warning .selo__icone { color: var(--warning); }
-  .selo--serious .selo__icone { color: var(--serious); }
-  .selo--critical .selo__icone { color: var(--critical); }
-  .selo--neutro { color: var(--ink-mudo); }
-
-  .avisos { list-style: none; margin: 0; padding: 14px 0; }
-  .avisos li {
-    display: flex; gap: 8px; padding: 4px 0;
-    font-size: 14px; color: var(--ink-2);
-  }
-  .avisos li::before { content: "▲"; color: var(--warning); font-size: 11px; line-height: 1.6; }
-
-  .pendencias { list-style: none; margin: 0; padding: 0; }
-  .pend { padding: 16px 0; border-bottom: 1px solid var(--linha); }
-  .pend:last-child { border-bottom: 0; }
-  .pend__topo { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
-  .pend__cliente { font-weight: 600; }
-  .pend__doc { color: var(--ink-mudo); font-size: 13px; font-variant-numeric: tabular-nums; }
-  .pend__certidao { margin-top: 2px; font-size: 13px; color: var(--ink-2); }
-  .pend__detalhe { margin: 6px 0 0; font-size: 14px; color: var(--ink-2); }
-  .pend__tecnico {
-    margin: 4px 0 0; font-size: 12px; color: var(--ink-mudo);
-    word-break: break-word;
-  }
-  .pend__link { font-size: 13px; color: var(--ink-2); }
-
-  .marca {
-    font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
-    text-transform: uppercase; padding: 2px 8px; border-radius: 999px;
-    border: 1px solid var(--borda); color: var(--ink-2);
-  }
-  .marca--piorou { color: var(--critical); border-color: var(--critical); }
-  .marca--melhorou { color: var(--good); border-color: var(--good); }
-
-  .manual { padding: 16px 0; border-bottom: 1px solid var(--linha); }
-  .manual:last-child { border-bottom: 0; }
-  .fichas { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 8px; }
-  .ficha {
-    font-size: 12px; color: var(--ink-2);
-    border: 1px solid var(--borda); border-radius: 999px; padding: 3px 10px;
-  }
-
-  .rolagem { overflow-x: auto; }
-  table { border-collapse: collapse; width: 100%; font-size: 14px; }
-  thead th {
-    text-align: left; padding: 10px 12px; vertical-align: bottom;
-    border-bottom: 1px solid var(--linha); font-weight: 600;
-  }
-  .col__nome { display: block; }
-  .col__orgao { display: block; font-weight: 400; font-size: 11px; color: var(--ink-mudo); }
-  tbody tr:nth-child(even) { background: var(--lavagem); }
-  .celula, .celula-cliente { padding: 10px 12px; vertical-align: top; }
-  .celula-cliente { text-align: left; font-weight: 500; }
-  .celula-cliente__nome { display: block; }
-  .celula-cliente__doc {
-    display: block; font-weight: 400; font-size: 12px;
-    color: var(--ink-mudo); font-variant-numeric: tabular-nums;
-  }
-  .celula__validade {
-    display: block; margin-top: 2px; font-size: 11px;
-    color: var(--ink-mudo); font-variant-numeric: tabular-nums;
-  }
-
-  .legenda { display: flex; flex-wrap: wrap; gap: 16px; padding: 14px 0; }
-  footer { color: var(--ink-mudo); font-size: 12px; margin-top: 24px; }
 </style>
 </head>
 <body>
+${timbre({ logo: logoEmbutido(), direita: `<span class="assinatura">Monitor de Certidões</span>` })}
+
 <div class="folha">
-  <header>
-    <h1>Monitor de Certidões</h1>
-    <p class="sub">Competência ${esc(competenciaPorExtenso(competencia))} · ${esc(contar(resumo.clientes, 'cliente', 'clientes'))} na carteira</p>
-    <p class="meta">Gerado em ${esc(dataHora(geradoEm))} · provedor padrão: ${esc(config.provedorPadrao)}</p>
-  </header>
+  <div class="titulo-pagina">
+    <hr class="fio fio--curto">
+    <h1>Certidões da carteira</h1>
+    <p class="sub">Competência ${esc(competenciaPorExtenso(competencia))} · ${esc(contar(resumo.clientes, 'cliente monitorado', 'clientes monitorados'))}</p>
+    <p class="meta">Gerado em ${esc(dataHora(geradoEm))} · origem dos dados: ${esc(config.provedorPadrao)}</p>
+  </div>
 
   <div class="tiles">
     ${tile(resumo.clientes, 'Clientes monitorados', contar(colunas.length, 'certidão por cliente', 'certidões por cliente'))}
@@ -544,11 +398,16 @@ export function gerarHtml({ competencia, execucao, config, comparacao = null }) 
     </div>
   </section>
 
-  <footer>
-    Relatório gerado por cnd-monitor. Cada certidão tem validade própria (CND federal 180 dias,
-    CRF do FGTS 30 dias) — a data de vencimento aparece na célula quando o provedor a informa.
-  </footer>
 </div>
+
+<footer class="rodape">
+  <div class="folha rodape__interno">
+    <p>Cada certidão tem validade própria — CND federal 180 dias, CRF do FGTS 30 dias.
+       A data de vencimento aparece na célula quando o órgão a informa. Este relatório
+       registra a situação no momento da consulta e não substitui a certidão emitida.</p>
+    <span class="assinatura">${SITE}</span>
+  </div>
+</footer>
 </body>
 </html>
 `;

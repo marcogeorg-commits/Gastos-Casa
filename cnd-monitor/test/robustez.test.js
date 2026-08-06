@@ -179,7 +179,7 @@ test('o relatório concorda em número com um único cliente', async () => {
   const execucao = await executar(config, credenciaisDoAmbiente({}));
   const html = gerarHtml({ competencia: '2026-08', execucao, config });
 
-  assert.match(html, /1 cliente na carteira/);
+  assert.match(html, /1 cliente monitorado/);
   assert.doesNotMatch(html, /1 clientes/);
   assert.doesNotMatch(html, /1 certidões por cliente/);
 });

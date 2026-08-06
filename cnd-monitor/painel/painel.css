@@ -1,0 +1,177 @@
+/* Componentes que só o painel usa: formulários, abas, botões e o console da
+ * rodada. O relatório não tem interação — por isso ficam fora de marca.css. */
+
+.abas {
+  display: flex; gap: 28px; margin-bottom: 32px;
+  border-bottom: 1px solid var(--linha);
+}
+.aba {
+  appearance: none; background: none; border: 0; cursor: pointer;
+  padding: 0 0 14px; margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  font-family: var(--geometrica);
+  font-size: 12px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--texto-3); transition: color 0.15s;
+}
+.aba:hover { color: var(--texto-2); }
+.aba[aria-selected="true"] { color: var(--texto); border-bottom-color: var(--ouro); font-weight: 600; }
+.aba__conta {
+  display: inline-block; margin-left: 7px; padding: 1px 6px;
+  border-radius: 999px; background: var(--realce); color: var(--ouro-fundo);
+  font-size: 10px; letter-spacing: 0.04em;
+}
+
+/* --- Barra de comando --------------------------------------------------- */
+
+.comando {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 16px 22px; margin-bottom: 32px;
+  background: var(--osso-claro);
+  border: 1px solid var(--borda); border-radius: var(--raio);
+}
+.comando__rotulo {
+  font-family: var(--geometrica); font-size: 11px; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--texto-3);
+}
+.empurra { margin-left: auto; }
+
+/* --- Controles ---------------------------------------------------------- */
+
+input[type="text"], select {
+  width: 100%; min-width: 80px; padding: 8px 10px;
+  font: inherit; font-size: 14px; color: var(--texto);
+  background: var(--superficie); border: 1px solid var(--borda);
+  border-radius: var(--raio); transition: border-color 0.15s;
+}
+input[type="text"]:focus, select:focus {
+  outline: none; border-color: var(--ouro); box-shadow: 0 0 0 3px var(--realce);
+}
+input[type="text"]:disabled { background: var(--lavagem); color: var(--texto-3); }
+input.invalido { border-color: var(--critical); }
+select { width: auto; cursor: pointer; }
+
+.erro-campo { display: block; margin-top: 4px; font-size: 11px; color: var(--critical); }
+
+button {
+  appearance: none; cursor: pointer; font: inherit;
+  font-size: 13px; font-weight: 500; padding: 9px 18px;
+  border: 1px solid var(--borda); border-radius: var(--raio);
+  background: var(--superficie); color: var(--texto);
+  transition: background 0.15s, border-color 0.15s;
+}
+button:hover:not(:disabled) { background: var(--lavagem); border-color: var(--ouro); }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+button.principal {
+  background: var(--tinta); border-color: var(--tinta); color: #fff;
+  letter-spacing: 0.04em;
+}
+button.principal:hover:not(:disabled) { background: #2a2a26; border-color: #2a2a26; }
+
+/* No escuro o botão inverte: claro sobre fundo escuro. Não pode usar --osso,
+ * que escurece junto com o tema — daria preto sobre preto. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-tema="claro"]) button.principal {
+    background: #f0ede4; border-color: #f0ede4; color: #0a0a0a;
+  }
+  :root:not([data-tema="claro"]) button.principal:hover:not(:disabled) {
+    background: #fff; border-color: #fff;
+  }
+}
+:root[data-tema="escuro"] button.principal {
+  background: #f0ede4; border-color: #f0ede4; color: #0a0a0a;
+}
+:root[data-tema="escuro"] button.principal:hover:not(:disabled) {
+  background: #fff; border-color: #fff;
+}
+
+button.icone { padding: 5px 9px; color: var(--texto-3); border-color: transparent; }
+button.icone:hover:not(:disabled) { color: var(--critical); border-color: var(--borda); }
+
+.acoes { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 20px 0 4px; }
+
+/* --- Marcadores de certidão --------------------------------------------- */
+
+.marcadores { display: flex; flex-wrap: wrap; gap: 5px; }
+.marcador {
+  font-size: 11px; padding: 3px 9px; border-radius: 999px;
+  border: 1px solid var(--borda); color: var(--texto-3);
+  cursor: pointer; user-select: none; white-space: nowrap; transition: all 0.12s;
+}
+.marcador:hover { border-color: var(--ouro); }
+.marcador[aria-pressed="true"] {
+  border-color: var(--ouro); background: var(--realce);
+  color: var(--ouro-fundo); font-weight: 600;
+}
+.marcador--herdado[aria-pressed="true"] { background: none; font-weight: 400; border-style: dashed; }
+
+/* --- Avisos ------------------------------------------------------------- */
+
+.aviso {
+  display: flex; gap: 12px; padding: 16px 20px; margin-bottom: 24px;
+  border: 1px solid var(--borda); border-left: 3px solid var(--warning);
+  border-radius: var(--raio); background: var(--superficie);
+  font-size: 14px; color: var(--texto-2); line-height: 1.6;
+}
+.aviso--perigo { border-left-color: var(--critical); }
+.aviso--calmo { border-left-color: var(--ouro); }
+.aviso strong { color: var(--texto); font-weight: 600; }
+.aviso__i { flex-shrink: 0; line-height: 1.4; }
+
+/* --- Console da rodada -------------------------------------------------- */
+
+.console {
+  margin-bottom: 32px; border: 1px solid var(--borda);
+  border-radius: var(--raio); overflow: hidden; background: var(--superficie);
+}
+.console__topo {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 20px; border-bottom: 1px solid var(--linha); background: var(--osso-claro);
+  font-family: var(--geometrica); font-size: 11px;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--texto-2);
+}
+.console__saida {
+  margin: 0; padding: 16px 20px; max-height: 320px; overflow-y: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px; line-height: 1.7; color: var(--texto-2);
+  white-space: pre-wrap; word-break: break-word;
+}
+.console__saida:empty::before { content: "Aguardando…"; color: var(--texto-3); }
+
+.pulso {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--good);
+  animation: pulso 1.4s ease-in-out infinite;
+}
+@keyframes pulso { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) { .pulso { animation: none; } }
+
+/* --- Diversos ----------------------------------------------------------- */
+
+.vazio { color: var(--texto-3); font-size: 14px; padding: 24px 0; text-align: center; }
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px; background: var(--lavagem); padding: 2px 6px; border-radius: 3px;
+}
+a { color: var(--ouro-fundo); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+
+.grade-cert { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+.cert {
+  border: 1px solid var(--borda); border-radius: var(--raio);
+  padding: 16px 18px; background: var(--superficie);
+}
+.cert__nome { font-weight: 600; font-size: 14px; margin-bottom: 3px; }
+.cert__doc { font-size: 12px; color: var(--texto-3); font-variant-numeric: tabular-nums; margin-bottom: 12px; }
+.cert__campo { margin-bottom: 10px; }
+.cert__campo label {
+  display: block; margin-bottom: 4px;
+  font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--texto-3);
+}
+
+#brinde { position: fixed; inset: auto 0 0 auto; padding: 12px 20px; }
+.tostada {
+  position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%);
+  background: var(--tinta); color: #fff; padding: 12px 22px;
+  border-radius: var(--raio); font-size: 13.5px; box-shadow: var(--sombra);
+  z-index: 50; animation: sobe 0.2s ease-out;
+}
+@keyframes sobe { from { opacity: 0; transform: translate(-50%, 8px); } }

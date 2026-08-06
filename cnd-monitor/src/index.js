@@ -2,6 +2,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { carregarAmbiente } from './ambiente.js';
 import { carregarConfig, credenciaisDoAmbiente } from './config.js';
 import { descreverSituacao } from './catalogo.js';
 import { executar, planejar } from './executor.js';
@@ -29,12 +30,17 @@ function competenciaAtual(agora = new Date()) {
 export async function principal(argv = process.argv.slice(2), env = process.env) {
   const args = lerArgumentos(argv);
 
+  // Senhas dos certificados. Vem antes de tudo porque a rodada pode ser
+  // disparada pelo painel, que nao tem o ambiente do terminal do operador.
+  if (env === process.env) carregarAmbiente(env);
+
   if (args.ajuda || args.help) {
     console.log(`
 cnd-monitor — consulta mensal de certidões da carteira de clientes
 
   --clientes <arquivo>     padrão: clientes.json
-  --provedor <id>          sobrescreve o provedorPadrao (mock | infosimples | serpro)
+  --provedor <id>          sobrescreve o provedorPadrao
+                           (web | ecac | mock | infosimples | serpro)
   --competencia <AAAA-MM>  padrão: mês corrente
   --saida <pasta>          padrão: raiz do cnd-monitor
   --concorrencia <n>       consultas simultâneas (padrão 4)
