@@ -666,3 +666,84 @@ test('o .env nasce legível só pelo dono', async (t) => {
   // senha do cliente legível para os outros usuários da máquina.
   assert.equal(modo & 0o077, 0, `permissões ${modo.toString(8)}`);
 });
+
+// --- Autenticação do e-CAC -------------------------------------------------
+
+test('ausência de tela de login não é prova de sessão aberta', async (t) => {
+  let chromium;
+  try {
+    ({ chromium } = await import('playwright'));
+  } catch {
+    return t.skip('Playwright indisponível');
+  }
+
+  const executablePath = process.env.PLAYWRIGHT_EXECUTABLE_PATH;
+  let navegador;
+  try {
+    navegador = await chromium.launch({
+      args: ['--no-sandbox'],
+      ...(executablePath ? { executablePath } : {}),
+    });
+  } catch {
+    return t.skip('Chromium indisponível');
+  }
+
+  const { autenticado } = await import('../src/provedores/ecac.js');
+  const pagina = await navegador.newPage();
+
+  try {
+    // Página de erro do portal: nem login, nem sessão. A versão anterior dizia
+    // "autenticado" e seguia adiante, falhando depois com uma mensagem sobre
+    // seletores que não tinha nada a ver com o problema.
+    await pagina.setContent('<h1>Serviço temporariamente indisponível</h1>');
+    assert.equal(await autenticado(pagina), false, 'página neutra não é sessão aberta');
+
+    // Tela de login: claramente fora.
+    await pagina.setContent('<button>Certificado digital</button>');
+    assert.equal(await autenticado(pagina), false);
+
+    // Dentro: há por onde sair.
+    await pagina.setContent('<a href="/logout">Sair</a><h1>e-CAC</h1>');
+    assert.equal(await autenticado(pagina), true);
+  } finally {
+    await navegador.close();
+  }
+});
+
+test('serviço não encontrado devolve o que existe na tela', async (t) => {
+  let chromium;
+  try {
+    ({ chromium } = await import('playwright'));
+  } catch {
+    return t.skip('Playwright indisponível');
+  }
+
+  const executablePath = process.env.PLAYWRIGHT_EXECUTABLE_PATH;
+  let navegador;
+  try {
+    navegador = await chromium.launch({
+      args: ['--no-sandbox'],
+      ...(executablePath ? { executablePath } : {}),
+    });
+  } catch {
+    return t.skip('Chromium indisponível');
+  }
+
+  const { diagnosticar } = await import('../src/provedores/ecac.js');
+  const pagina = await navegador.newPage();
+
+  try {
+    await pagina.setContent(`
+      <title>e-CAC — Serviços</title>
+      <a href="/a">Consulta Pendências — Situação Fiscal</a>
+      <a href="/b">Regularize sua situação</a>`);
+
+    const onde = await diagnosticar(pagina);
+    // Sem isto, "não encontrado no menu" é beco sem saída: não dá para saber
+    // se o menu mudou, se a sessão não abriu, ou se veio outra página.
+    assert.match(onde.titulo, /e-CAC/);
+    assert.ok(onde.links.some((l) => /Situação Fiscal/.test(l)));
+  } finally {
+    await navegador.close();
+  }
+});

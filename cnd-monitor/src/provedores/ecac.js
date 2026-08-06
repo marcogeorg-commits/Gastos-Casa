@@ -75,18 +75,63 @@ export async function abrirContexto(browser, certificado) {
 }
 
 /**
+ * Marcas de que estamos DENTRO do e-CAC, nao apenas fora da tela de login.
+ *
+ * Um portal autenticado sempre oferece uma saida e diz de quem e a sessao.
+ */
+const MARCAS_DE_DENTRO = [
+  'a:has-text("Sair")',
+  'a[href*="logout" i]',
+  'a[href*="encerrar" i]',
+  'text=/perfil de acesso/i',
+  'text=/contribuinte:/i',
+];
+
+const MARCAS_DE_LOGIN = [
+  'text=/entrar com gov.br/i',
+  'text=/sua conta gov.br/i',
+  'input[type="password"]',
+  'button:has-text("Certificado digital")',
+  'a:has-text("Certificado digital")',
+];
+
+/**
  * Entrou de fato?
  *
- * Sem essa checagem, uma sessão recusada seguiria para a tela de serviço e a
- * leitura devolveria o texto da página de login como se fosse resultado.
+ * A versao anterior respondia "sim" sempre que NAO achava marca de tela de
+ * login -- e ausencia de prova nao e prova. Bastava o portal mostrar qualquer
+ * outra coisa (aviso, erro, pagina intermediaria) para a rotina seguir adiante
+ * achando que estava logada e falhar la na frente, com uma mensagem sobre
+ * seletores que nao tinha nada a ver com o problema real.
+ *
+ * Agora exige marca positiva de sessao aberta.
  */
 export async function autenticado(pagina) {
-  const marcasDeLogin = [
-    'text=/certificado digital/i',
-    'text=/entrar com gov.br/i',
-    'input[type="password"]',
-  ];
-  return (await primeiroVisivel(pagina, marcasDeLogin)) === null;
+  if (await primeiroVisivel(pagina, MARCAS_DE_LOGIN)) return false;
+  return (await primeiroVisivel(pagina, MARCAS_DE_DENTRO)) !== null;
+}
+
+/**
+ * O que a tela mostra quando algo nao foi encontrado.
+ *
+ * Sem isto, "servico nao encontrado no menu" e um beco: nao da para saber se o
+ * menu mudou, se a sessao nao abriu ou se o portal devolveu outra pagina. Com
+ * a lista de links em maos, o ajuste e imediato -- e ela vai para o log, que o
+ * operador ve no painel.
+ */
+export async function diagnosticar(pagina, limite = 40) {
+  const links = await pagina
+    .evaluate(
+      (max) =>
+        [...document.querySelectorAll('a')]
+          .map((a) => (a.innerText || a.textContent || '').replace(/\s+/g, ' ').trim())
+          .filter((t) => t.length > 2 && t.length < 80)
+          .slice(0, max),
+      limite,
+    )
+    .catch(() => []);
+
+  return { url: pagina.url(), titulo: await pagina.title().catch(() => ''), links };
 }
 
 /**
@@ -132,18 +177,30 @@ export async function consultar({ cliente, idCertidao, config = {}, env = proces
     await pagina.waitForLoadState('networkidle').catch(() => {});
 
     if (!(await autenticado(pagina))) {
+      const onde = await diagnosticar(pagina, 12);
+      console.error(`      e-CAC: sessão não abriu. Tela: ${onde.titulo} — ${onde.url}`);
+      console.error(`      Links visíveis: ${onde.links.join(' | ') || '(nenhum)'}`);
       return {
         situacao: 'manual',
         detalhe:
-          'O e-CAC não aceitou o certificado — verifique validade, senha e se há procuração eletrônica para este cliente.',
+          'A sessão do e-CAC não abriu com este certificado. Verifique validade, senha e se ' +
+          `há procuração eletrônica para este cliente. A tela parou em "${onde.titulo || onde.url}".`,
       };
     }
 
     const servico = await esperarSeletor(pagina, receita.caminhoServico, 20_000);
     if (!servico) {
+      // O que existe na tela vale mais que o palpite do que deveria existir.
+      const onde = await diagnosticar(pagina);
+      console.error(`      e-CAC · ${receita.nome}: serviço não encontrado.`);
+      console.error(`      Tela: ${onde.titulo} — ${onde.url}`);
+      console.error(`      Links visíveis: ${onde.links.join(' | ') || '(nenhum)'}`);
+
       return {
         situacao: 'erro',
-        detalhe: `Serviço "${receita.nome}" não encontrado no menu. Rode "npm run calibrar -- ${idCertidao}".`,
+        detalhe:
+          `Serviço "${receita.nome}" não encontrado nesta tela ("${onde.titulo || onde.url}"). ` +
+          `O que há nela: ${onde.links.slice(0, 12).join(', ') || 'nenhum link'}.`,
       };
     }
 
