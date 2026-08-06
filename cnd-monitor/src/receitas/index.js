@@ -118,26 +118,20 @@ export function receitaFormulario(config) {
           'Resolva o captcha na janela do navegador e clique em enviar.',
       );
 
-      const respondeu = await esperarDesfecho(
+      const limpo = await esperarRespostaHumana(
         pagina,
         config,
-        argumentos.esperaHumano ?? 300_000,
-        pagina.url(),
+        esperar,
+        argumentos.esperaHumano ?? 600_000,
       );
-      if (!respondeu) {
+
+      if (!limpo) {
         return {
           situacao: 'manual',
           detalhe:
-            'A janela ficou aberta pelo tempo previsto e o resultado não apareceu. ' +
-            'Se você resolveu o captcha e mesmo assim não passou, consulte no portal.',
+            'A janela ficou aberta pelo tempo previsto e nenhuma resposta reconhecível apareceu. ' +
+            'Se você resolveu o captcha e mesmo assim não passou, consulte no portal do órgão.',
         };
-      }
-
-      await pagina.waitForLoadState('networkidle').catch(() => {});
-
-      const limpo = await textoDoResultado(pagina, alvoResultado, esperar, config.ruidos);
-      if (!limpo) {
-        return { situacao: 'erro', detalhe: 'A página não trouxe texto de resultado.' };
       }
 
       const situacao = interpretarTexto(limpo);
@@ -294,6 +288,38 @@ async function esperarDesfecho(pagina, config, tempoLimite = 45_000, urlInicial 
     )
     .then(() => true)
     .catch(() => false);
+}
+
+/**
+ * Espera a pessoa resolver o captcha e o portal responder.
+ *
+ * Nao serve olhar a URL: o CNDT e JSF e responde por postback, sem sair de
+ * `inicio.faces` -- o desfecho chega com a URL identica. Tambem nao serve
+ * apenas procurar texto reconhecivel, porque a propria tela de entrada se
+ * chama "Certidao Negativa de Debitos Trabalhistas": "negativa" ja esta la
+ * antes de qualquer consulta, e aceitar isso seria dar por negativa uma
+ * certidao que ninguem emitiu -- a pior falha possivel neste programa.
+ *
+ * A prova de que algo aconteceu e o texto **mudar** em relacao ao que estava
+ * na tela quando a vez passou para a pessoa, e o novo texto ser interpretavel.
+ */
+async function esperarRespostaHumana(pagina, config, esperar, tempoLimite) {
+  const alvos = config.seletores.alvoResultado;
+  const ler = () => textoDoResultado(pagina, alvos, esperar, config.ruidos);
+
+  const base = await ler();
+  const limite = Date.now() + tempoLimite;
+
+  while (Date.now() < limite) {
+    await new Promise((r) => setTimeout(r, 1500));
+
+    // A janela pode ter sido fechada pelo operador: nao e erro, e desistencia.
+    if (pagina.isClosed()) return '';
+
+    const agora = await ler().catch(() => '');
+    if (agora && agora !== base && interpretarTexto(agora)) return agora;
+  }
+  return '';
 }
 
 /** Uma passada pelo formulário: preenche, envia e lê o que voltou. */

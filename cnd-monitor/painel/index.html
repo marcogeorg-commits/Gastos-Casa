@@ -160,7 +160,7 @@ const descrever = (s) => SITUACOES[s] ?? SITUACOES.erro;
 // ---------------------------------------------------------------------------
 // Estado e transporte
 // ---------------------------------------------------------------------------
-const estado = { config: null, competencias: [], atual: null, certificados: null, senhas: {} };
+const estado = { config: null, competencias: [], atual: null, certificados: null, senhas: {}, locais: {} };
 let sondagem = null;
 
 const esc = (v) => String(v ?? '')
@@ -576,6 +576,30 @@ function renderCertificados() {
     </div>
 
     <section>
+      <h2>Onde está tudo</h2>
+      <div class="cartao rolagem">
+        <table>
+          <tbody>
+            ${[
+              ['Certificados .pfx', estado.locais.certificados, `${(estado.certificados?.arquivos ?? []).length} arquivo(s)`],
+              ['CNPJs monitorados', estado.locais.cadastro, `${(estado.config?.clientes ?? []).length} cliente(s)`],
+              ['Senhas dos certificados', estado.locais.senhas, 'fora do Git'],
+              ['Relatórios gerados', estado.locais.relatorios, `${estado.competencias.length} arquivo(s)`],
+              ['Histórico', estado.locais.historico, 'dados brutos de cada consulta'],
+            ].map(([nome, caminho, apoio]) => `
+              <tr>
+                <th scope="row" style="white-space:nowrap">${esc(nome)}</th>
+                <td><code>${esc(caminho ?? '—')}</code></td>
+                <td class="doc" style="white-space:nowrap">${esc(apoio)}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <p class="ajuda" style="margin-top:12px">Tudo nesta máquina. Os CNPJs vêm do
+        cadastro da aba <strong>Clientes</strong>; a consulta rápida não usa esse arquivo.</p>
+    </section>
+
+    <section>
       <h2>Pasta dos certificados</h2>
       <div class="cartao cartao--ar">
         <div style="max-width:520px">
@@ -634,6 +658,7 @@ function relerCertificados() {
 
     estado.certificados = dados.certificados;
     estado.senhas = dados.senhas ?? {};
+  estado.locais = dados.locais ?? {};
 
     const campo = document.getElementById('pasta-cert');
     const focado = document.activeElement === campo;
@@ -991,6 +1016,7 @@ async function carregar() {
   estado.atual = dados.atual;
   estado.certificados = dados.certificados;
   estado.senhas = dados.senhas ?? {};
+  estado.locais = dados.locais ?? {};
 
   const seletor = document.getElementById('provedor');
   seletor.innerHTML = Object.entries(PROVEDORES)

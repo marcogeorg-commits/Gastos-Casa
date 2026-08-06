@@ -24,7 +24,7 @@ export const id = 'assistido';
 export const nome = 'Assistido (você resolve só o captcha)';
 
 const TEMPO_LIMITE = 60_000;
-const ESPERA_HUMANO = 300_000;
+const ESPERA_HUMANO = 600_000;
 
 export function suporta(idCertidao) {
   return Boolean(RECEITAS[idCertidao]);
@@ -35,6 +35,27 @@ export function credenciaisFaltando() {
 }
 
 let navegador = null;
+
+/**
+ * Fila de uma consulta por vez.
+ *
+ * A concorrencia da rodada ja e forcada a 1 no chamador, mas isso e uma
+ * combinacao entre modulos -- e a combinacao foi quebrada uma vez, com o
+ * operador vendo sete janelas abrirem em cima uma da outra. Aqui a garantia e
+ * estrutural: enquanto uma consulta assistida nao termina, a proxima nem
+ * comeca, venha ela de onde vier.
+ */
+let fila = Promise.resolve();
+
+function enfileirar(tarefa) {
+  const minhaVez = fila.then(tarefa, tarefa);
+  // A fila nao pode morrer por causa de uma consulta que falhou.
+  fila = minhaVez.then(
+    () => {},
+    () => {},
+  );
+  return minhaVez;
+}
 
 async function abrirNavegador(env) {
   if (navegador) return navegador;
@@ -75,7 +96,12 @@ export function temOperador(env = process.env) {
   return true;
 }
 
-export async function consultar({ cliente, idCertidao, env = process.env }) {
+export async function consultar(argumentos) {
+  // Uma janela de cada vez, sempre.
+  return enfileirar(() => consultarAgora(argumentos));
+}
+
+async function consultarAgora({ cliente, idCertidao, env = process.env }) {
   const receita = RECEITAS[idCertidao];
 
   if (!receita) {

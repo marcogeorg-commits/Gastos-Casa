@@ -277,7 +277,19 @@ async function montarEstado(raiz) {
     if (variavel) senhas[variavel] = temSenha(variavel);
   }
 
-  return { config, competencias, atual, certificados, senhas };
+  // Caminhos absolutos, para o operador saber onde as coisas estao sem ter
+  // que deduzir de "../Certificados". Foi pedido explicitamente, e com razao:
+  // um programa que le certificado e grava cadastro precisa dizer onde.
+  const locais = {
+    projeto: raiz,
+    cadastro: resolve(raiz, 'clientes.json'),
+    certificados: certificados.pasta,
+    relatorios: resolve(raiz, 'relatorios'),
+    historico: resolve(raiz, 'historico'),
+    senhas: resolve(raiz, '.env'),
+  };
+
+  return { config, competencias, atual, certificados, senhas, locais };
 }
 
 // --- Servidor --------------------------------------------------------------

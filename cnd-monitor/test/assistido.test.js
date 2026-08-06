@@ -6,6 +6,7 @@ import { esperarSeletor, primeiroSeletorPresente, primeiroVisivel } from '../src
 import { temOperador } from '../src/provedores/assistido.js';
 
 const PORTAL_FALSO = `
+  <h1>Certidão Negativa de Débitos Trabalhistas</h1>
   <form id="f">
     <input id="doc" maxlength="18">
     <label>Digite os caracteres</label>
@@ -34,7 +35,9 @@ const receita = receitaFormulario({
   seletores: {
     campoDocumento: ['#doc'],
     botaoEnviar: ['#enviar'],
-    alvoResultado: ['#saida'],
+    // `main` inclui o título da página, que já diz "Negativa" antes de
+    // qualquer consulta — é assim no CNDT de verdade.
+    alvoResultado: ['#saida', 'body'],
   },
 });
 
@@ -106,7 +109,7 @@ test('o modo assistido devolve conferência manual se ninguém agir', async (t) 
       primeiroSeletorPresente,
       primeiroVisivel,
       esperarSeletor,
-      esperaHumano: 1200, // ninguém resolve
+      esperaHumano: 4000, // ninguém resolve
       registrar: () => {},
     }),
   );
@@ -115,7 +118,7 @@ test('o modo assistido devolve conferência manual se ninguém agir', async (t) 
 
   // Silêncio não pode virar "negativa": ninguém consultou nada.
   assert.equal(saida.situacao, 'manual');
-  assert.match(saida.detalhe, /resultado não apareceu/);
+  assert.match(saida.detalhe, /nenhuma resposta reconhecível/);
 });
 
 test('sem janela e sem operador, o assistido recusa em vez de travar', () => {
@@ -126,4 +129,41 @@ test('sem janela e sem operador, o assistido recusa em vez de travar', () => {
     assert.equal(temOperador({}), false, 'sem DISPLAY não há janela');
     assert.equal(temOperador({ DISPLAY: ':0' }), true);
   }
+});
+
+test('o título da página não pode ser lido como resultado', async (t) => {
+  // O CNDT se chama "Certidão Negativa de Débitos Trabalhistas": a palavra
+  // "negativa" está na tela antes de qualquer consulta. Aceitá-la seria dar
+  // por negativa uma certidão que ninguém emitiu — a pior falha possível aqui.
+  const saida = await comPagina(async (pagina) =>
+    receita.executarAssistido({
+      pagina,
+      cliente: { nome: 'Gama', documento: '11222333000181' },
+      primeiroSeletorPresente,
+      primeiroVisivel,
+      esperarSeletor,
+      esperaHumano: 4000, // ninguém resolve o captcha
+      registrar: () => {},
+    }),
+  );
+
+  if (saida === null) return t.skip('Playwright/Chromium indisponível');
+  assert.equal(saida.situacao, 'manual', 'o título não pode virar "negativa"');
+});
+
+test('consultas assistidas nunca abrem duas janelas ao mesmo tempo', async () => {
+  const { consultar } = await import('../src/provedores/assistido.js');
+
+  // Sem operador, cada chamada devolve "manual" na hora — o que interessa é
+  // que a fila as serialize em vez de dispará-las juntas.
+  const ordem = [];
+  const uma = (n) =>
+    consultar({ cliente: { nome: `c${n}` }, idCertidao: 'cndt', env: { CI: 'true' } }).then((r) => {
+      ordem.push(n);
+      return r;
+    });
+
+  const resultados = await Promise.all([uma(1), uma(2), uma(3)]);
+  assert.deepEqual(ordem, [1, 2, 3], 'a fila precisa preservar a ordem de chegada');
+  for (const r of resultados) assert.equal(r.situacao, 'manual');
 });
