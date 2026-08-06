@@ -43,12 +43,6 @@ let navegador = null;
 async function abrirNavegador(env) {
   if (navegador) return navegador;
 
-  // Antes de qualquer conexão: o túnel TLS do Playwright roda neste processo, e
-  // é ele que precisa reconhecer a cadeia da ICP-Brasil.
-  const cas = await confiarNasCasDoSistema();
-  if (!cas.aplicado) console.error(`      e-CAC: ${cas.motivo}`);
-  else if (cas.locais > 0) console.error(`      e-CAC: ${cas.locais} certificado(s) da pasta ca/.`);
-
   let chromium;
   try {
     ({ chromium } = await import('playwright'));
@@ -74,16 +68,46 @@ export async function encerrar() {
   navegador = null;
 }
 
-/** Contexto amarrado ao certificado de um cliente. */
-export async function abrirContexto(browser, certificado) {
-  return browser.newContext({
-    locale: 'pt-BR',
-    clientCertificates: ORIGENS_CERTIFICADO.map((origin) => ({
-      origin,
-      pfxPath: certificado.caminho,
-      passphrase: certificado.senha,
-    })),
-  });
+let jaAvisouDasCas = false;
+
+/**
+ * Contexto amarrado ao certificado de um cliente.
+ *
+ * O preparo das autoridades mora AQUI, e nao junto do `launch`, porque este e o
+ * unico ponto por onde certificado de cliente entra -- a consulta e a
+ * calibracao passam os dois por aqui. Deixa-lo no `launch` do provedor fez a
+ * calibracao, que abre navegador proprio, cair no mesmo HTTP 503 que ja tinha
+ * sido consertado na consulta: uma correcao que valia so para quem passasse
+ * pela porta certa.
+ *
+ * A ordem importa: `newContext` e quem monta o contexto seguro, e ele fotografa
+ * as autoridades vigentes no momento em que e criado.
+ */
+export async function abrirContexto(browser, certificado, preparar = confiarNasCasDoSistema) {
+  const cas = await preparar();
+  if (!jaAvisouDasCas) {
+    jaAvisouDasCas = true;
+    if (!cas.aplicado) console.error(`      e-CAC: ${cas.motivo}`);
+    else if (cas.locais > 0) console.error(`      e-CAC: ${cas.locais} certificado(s) da pasta ca/.`);
+  }
+
+  try {
+    return await browser.newContext({
+      locale: 'pt-BR',
+      clientCertificates: ORIGENS_CERTIFICADO.map((origin) => ({
+        origin,
+        pfxPath: certificado.caminho,
+        passphrase: certificado.senha,
+      })),
+    });
+  } catch (erro) {
+    // "mac verify failure" e como o OpenSSL diz "a senha esta errada". Repassar
+    // isso ao operador manda um contador procurar defeito no arquivo.
+    if (/mac verify failure/i.test(erro.message ?? '')) {
+      throw new Error('A senha deste certificado está errada.');
+    }
+    throw erro;
+  }
 }
 
 /**

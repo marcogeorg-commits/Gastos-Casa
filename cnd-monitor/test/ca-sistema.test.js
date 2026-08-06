@@ -65,3 +65,59 @@ test('o que está na pasta ca/ passa a valer junto', async () => {
   // Pasta que não existe não é erro: quem nunca rodou `npm run cadeia` não tem.
   assert.deepEqual(await lerCasLocais(join(pasta, 'nao-existe')), []);
 });
+
+/**
+ * A correção que vale só para quem passa pela porta certa não é correção.
+ *
+ * O preparo das autoridades estava junto do `launch` do provedor. A calibração
+ * abre navegador próprio e ia direto ao `abrirContexto` -- então continuou
+ * caindo no mesmo HTTP 503 que a consulta já tinha resolvido, dias depois de
+ * "resolvido".
+ *
+ * Agora mora no `abrirContexto`, por onde certificado de cliente entra
+ * obrigatoriamente. E tem que acontecer ANTES do `newContext`: é ele quem
+ * monta o contexto seguro, fotografando as autoridades daquele instante.
+ */
+test('abrir contexto prepara as autoridades antes de montar o contexto seguro', async () => {
+  const { abrirContexto } = await import('../src/provedores/ecac.js');
+
+  const ordem = [];
+  const preparar = async () => {
+    ordem.push('preparou');
+    return { aplicado: true, locais: 0 };
+  };
+  const navegadorFalso = {
+    newContext: async (opcoes) => {
+      ordem.push('newContext');
+      return opcoes;
+    },
+  };
+
+  const opcoes = await abrirContexto(
+    navegadorFalso,
+    { caminho: '/tmp/alfa.pfx', senha: 'x' },
+    preparar,
+  );
+
+  assert.deepEqual(ordem, ['preparou', 'newContext'], 'preparo antes, sempre');
+  assert.ok(opcoes.clientCertificates.length > 0, 'o certificado do cliente foi amarrado');
+});
+
+test('senha errada é dita como senha errada', async () => {
+  const { abrirContexto } = await import('../src/provedores/ecac.js');
+
+  const navegadorFalso = {
+    newContext: async () => {
+      throw new Error('browser.newContext: Failed to load client certificate: mac verify failure');
+    },
+  };
+
+  await assert.rejects(
+    abrirContexto(navegadorFalso, { caminho: '/tmp/a.pfx', senha: 'errada' }, async () => ({
+      aplicado: true,
+      locais: 0,
+    })),
+    // "mac verify failure" manda um contador procurar defeito no arquivo.
+    /senha deste certificado está errada/,
+  );
+});
