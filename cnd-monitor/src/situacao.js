@@ -52,6 +52,21 @@ export function interpretarTexto(texto) {
     return 'positiva_com_efeito_negativo';
   }
 
+  // A negacao vem antes da palavra que ela nega.
+  //
+  // O corpo da CND diz "e certificado que NAO CONSTAM PENDENCIAS em seu nome".
+  // A regra de baixo procura "pendencia" e devolveria `positiva` -- marcando de
+  // vermelho, no relatorio do escritorio, justamente o cliente que esta limpo.
+  // O erro so nao aparecia porque a leitura do PDF vinha com as palavras
+  // coladas e "pendncias" nao casava com nada; consertar o espacamento
+  // desenterrou isso.
+  if (
+    /n[ãa]o\s+(constam|consta|existem|existe|h[áa])\s+(pend[êe]nc|d[ée]bit|ocorr[êe]nc|registr)/.test(t) ||
+    t.includes('nada consta')
+  ) {
+    return 'negativa';
+  }
+
   // Antes de "negativa": "irregular" contem "regular", e um resultado ruim nao
   // pode ser lido como bom por acidente.
   if (t.includes('irregular') || t.includes('positiva') || t.includes('pendencia')) {

@@ -12,11 +12,13 @@
  * portais para conferir/atualizar os seletores de uma vez.
  */
 
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { salvarComprovante } from '../comprovante.js';
+import { extrairTextoPdf } from '../pdf-texto.js';
+import { interpretarTexto } from '../situacao.js';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { RECEITAS } from '../receitas/index.js';
+import { RECEITAS, extrairValidade } from '../receitas/index.js';
 
 const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -341,10 +343,11 @@ export async function consultar({ cliente, idCertidao, env = process.env, compet
       if (captcha && resultado.situacao === 'erro') {
         resultado.detalhe = `${resultado.detalhe} (a página usa ${captcha.provedor} invisível — pode ter barrado a automação)`;
       }
-      if (resultado.situacao === 'erro') {
-        const captura = await registrarFalha(pagina, idCertidao, cliente);
-        if (captura) resultado.detalhe = `${resultado.detalhe} — tela salva em ${captura}`;
-      } else {
+      // O comprovante e guardado SEMPRE que houve download, inclusive quando a
+      // leitura da pagina falhou. Antes, "nao trouxe texto de resultado"
+      // descartava junto a certidao que o portal ja tinha entregue -- o
+      // programa tinha o documento nas maos e jogava fora.
+      if (baixado || resultado.situacao !== 'erro') {
         resultado.arquivo = await salvarComprovante({
           pagina,
           download: baixado,
@@ -353,6 +356,20 @@ export async function consultar({ cliente, idCertidao, env = process.env, compet
           cliente,
           idCertidao,
         });
+      }
+
+      // A certidao e a fonte, nao a tela. A pagina do portal diz so "emitida
+      // com sucesso" -- a mesma frase para negativa e para positiva com efeito
+      // de negativa, que sao coisas diferentes para quem presta contas.
+      const doPdf = await lerDoComprovante(resultado.arquivo);
+      if (doPdf) {
+        const arquivo = resultado.arquivo;
+        resultado = { ...doPdf, arquivo };
+      }
+
+      if (resultado.situacao === 'erro') {
+        const captura = await registrarFalha(pagina, idCertidao, cliente);
+        if (captura) resultado.detalhe = `${resultado.detalhe} — tela salva em ${captura}`;
       }
       return resultado;
     }
@@ -366,4 +383,31 @@ export async function consultar({ cliente, idCertidao, env = process.env, compet
   } finally {
     await contexto.close().catch(() => {});
   }
+}
+
+/**
+ * O que a certidao diz, lida de dentro do arquivo.
+ *
+ * Vale mais que o texto da tela: a tela do portal da Receita anuncia "emitida
+ * com sucesso" tanto para negativa quanto para positiva com efeito de
+ * negativa. So o documento distingue.
+ *
+ * Devolve `null` quando nao ha arquivo, quando nao e PDF, ou quando o texto
+ * nao foi reconhecido -- e ai vale o que a pagina disse. Nunca chuta: certidao
+ * mal lida vira um "negativa" que ninguem conferiu.
+ */
+export async function lerDoComprovante(caminho, ler = readFile) {
+  if (!caminho || !/\.pdf$/i.test(caminho)) return null;
+
+  const texto = await ler(caminho).then(extrairTextoPdf).catch(() => null);
+  if (!texto) return null;
+
+  const situacao = interpretarTexto(texto);
+  if (!situacao) return null;
+
+  return {
+    situacao,
+    detalhe: texto.slice(0, 400),
+    validaAte: extrairValidade(texto),
+  };
 }
