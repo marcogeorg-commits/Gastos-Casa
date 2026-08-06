@@ -2,6 +2,7 @@ import { CATALOGO, descreverSituacao } from './catalogo.js';
 import { provedorDe } from './config.js';
 import { obterProvedor } from './provedores/index.js';
 import { criarRedator } from './segredos.js';
+import { chaveDe } from './vigencia.js';
 
 const CONCORRENCIA_PADRAO = 4;
 const TENTATIVAS = 3;
@@ -85,7 +86,13 @@ async function emLotes(tarefas, concorrencia, fn) {
 }
 
 export async function executar(config, credenciais, opcoes = {}) {
-  const { concorrencia = CONCORRENCIA_PADRAO, aoProgredir, env = process.env } = opcoes;
+  const {
+    concorrencia = CONCORRENCIA_PADRAO,
+    aoProgredir,
+    env = process.env,
+    // Certidoes ainda vigentes: consultadas antes, com validade no futuro.
+    vigentes = new Map(),
+  } = opcoes;
   const tarefas = montarTarefas(config);
   const avisos = [...config.avisos];
   const redigir = criarRedator(credenciais, env);
@@ -122,10 +129,28 @@ export async function executar(config, credenciais, opcoes = {}) {
   let resultados;
   try {
     resultados = await emLotes(tarefas, concorrencia, async (tarefa) => {
-      const bruto = await consultarUma(tarefa, config, credenciais, {
-        provedoresIndisponiveis,
-        env,
-      });
+      // Aproveitar o que ainda vale poupa a consulta e, no modo assistido, um
+      // captcha que uma pessoa teria de resolver sem necessidade.
+      const anterior = vigentes.get(chaveDe(tarefa.cliente.documento, tarefa.idCertidao));
+      const bruto = anterior
+        ? {
+            cliente: tarefa.cliente.nome,
+            documento: tarefa.cliente.documento,
+            certidao: tarefa.idCertidao,
+            certidaoNome: tarefa.certidao.nome,
+            orgao: tarefa.certidao.orgao,
+            urlManual: tarefa.certidao.urlManual ?? null,
+            situacao: 'vigente',
+            numeroCertidao: anterior.numeroCertidao ?? null,
+            validaAte: anterior.validaAte,
+            detalhe:
+              `Certidão de ${anterior.origem} ainda vigente (vence em ${anterior.diasRestantes} dias). ` +
+              'Não foi consultada de novo.',
+          }
+        : await consultarUma(tarefa, config, credenciais, {
+            provedoresIndisponiveis,
+            env,
+          });
       // O detalhe vai para o histórico versionado: credencial ecoada pela API
       // não pode chegar lá.
       const resultado = { ...bruto, detalhe: redigir(bruto.detalhe) };

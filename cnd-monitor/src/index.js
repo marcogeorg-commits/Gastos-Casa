@@ -20,6 +20,7 @@ import { descreverSituacao } from './catalogo.js';
 import { executar, planejar } from './executor.js';
 import { gerarHtml } from './relatorio.js';
 import { carregarAnterior, compararComAnterior, escreverIndice } from './historico.js';
+import { carregarVigentes } from './vigencia.js';
 import { PROVEDORES, cadeiaDe, rotear } from './provedores/index.js';
 
 const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -127,6 +128,7 @@ cnd-monitor — consulta mensal de certidões da carteira de clientes
   --competencia <AAAA-MM>  padrão: mês corrente
   --saida <pasta>          padrão: raiz do cnd-monitor
   --concorrencia <n>       consultas simultâneas (padrão 4)
+  --forcar                 reconsulta mesmo o que ainda está vigente
   --simular                mostra o que seria consultado, sem tocar na rede
 `);
     return 0;
@@ -233,7 +235,18 @@ cnd-monitor — consulta mensal de certidões da carteira de clientes
     'assistido',
   );
 
+  // Certidao com validade no futuro nao precisa ser refeita. `--forcar`
+  // ignora isso, para quando se quer o dado de hoje mesmo assim.
+  const vigentes = args.forcar
+    ? new Map()
+    : await carregarVigentes(resolve(pastaSaida, 'historico'));
+
+  if (vigentes.size > 0) {
+    console.log(`${vigentes.size} certidão(ões) ainda vigente(s) — não serão consultadas de novo.`);
+  }
+
   const execucao = await executar(config, credenciais, {
+    vigentes,
     concorrencia: assistido ? 1 : Number(args.concorrencia ?? 4),
     env,
     aoProgredir: ({ concluidas, total, resultado }) => {

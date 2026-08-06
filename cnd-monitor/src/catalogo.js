@@ -151,6 +151,18 @@ export const SITUACOES = {
     pendencia: false,
     manual: true,
   },
+  // Certidao anterior ainda vigente: nao foi consultada agora porque nao
+  // precisava. Nao e pendencia -- a situacao do cliente e conhecida e boa. O
+  // rotulo diz "vigente", nao "negativa", porque o dado e da consulta anterior
+  // e o relatorio nao pode dar a entender que foi verificado hoje.
+  vigente: {
+    rotulo: 'Vigente (da consulta anterior)',
+    curto: 'Vigente',
+    icone: '●',
+    status: 'good',
+    pendencia: false,
+  },
+
   nao_aplicavel: {
     rotulo: 'Não se aplica a este cliente',
     curto: 'n/a',
