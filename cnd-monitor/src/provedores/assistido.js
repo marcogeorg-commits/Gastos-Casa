@@ -194,16 +194,28 @@ async function consultarAgora({ cliente, idCertidao, env = process.env, competen
       });
     }
 
-    const doPdf = await lerDoComprovante(resultado.arquivo);
-    if (doPdf) return { ...doPdf, arquivo: resultado.arquivo };
-
-    await deixarLer(pagina, resultado, env);
-    return resultado;
+    return concluir(pagina, resultado, env);
   } catch (erro) {
     return { situacao: 'erro', detalhe: `${receita.nome}: ${erro.message}` };
   } finally {
     await contexto.close().catch(() => {});
   }
+}
+
+/**
+ * Decide o desfecho e so entao libera a janela.
+ *
+ * Existe como funcao propria porque a ordem aqui e o defeito: na primeira
+ * versao havia um `return` no meio do caminho -- quando o comprovante era
+ * legivel, a funcao saia por ali e a janela fechava na cara do operador,
+ * exatamente o que a espera existe para impedir. Uma saida so, no fim.
+ */
+export async function concluir(pagina, resultado, env = process.env) {
+  const doPdf = await lerDoComprovante(resultado.arquivo);
+  const desfecho = doPdf ? { ...doPdf, arquivo: resultado.arquivo } : resultado;
+
+  await deixarLer(pagina, desfecho, env);
+  return desfecho;
 }
 
 /**

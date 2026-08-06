@@ -62,3 +62,31 @@ test('dá para desligar a espera e ajustar o prazo', async () => {
   await deixarLer(paginaFalsa(), { situacao: 'erro' }, { ASSISTIDO_LEITURA: '600' }, 30_000);
   assert.ok(Date.now() - inicio < 5_000, 'ASSISTIDO_LEITURA manda no prazo');
 });
+
+/**
+ * O defeito era a ordem, não a espera.
+ *
+ * A primeira versão tinha um `return` no meio do caminho: quando o comprovante
+ * era legível, a função saía por ali e a janela fechava na cara do operador —
+ * exatamente o que a espera existe para impedir. Por isso "fechou de novo".
+ */
+test('a janela espera mesmo quando o comprovante foi lido', async () => {
+  const { concluir } = await import('../src/provedores/assistido.js');
+
+  let consultou = false;
+  const pagina = {
+    isClosed: () => {
+      consultou = true;
+      return true; // o operador fechou: libera na hora
+    },
+  };
+
+  const desfecho = await concluir(
+    pagina,
+    { situacao: 'indisponivel', detalhe: 'erro interno', arquivo: null },
+    { ASSISTIDO_LEITURA: '3000' },
+  );
+
+  assert.equal(consultou, true, 'passou pela espera antes de sair');
+  assert.equal(desfecho.situacao, 'indisponivel');
+});
