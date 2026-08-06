@@ -747,3 +747,56 @@ test('serviço não encontrado devolve o que existe na tela', async (t) => {
     await navegador.close();
   }
 });
+
+test('espera a tela que se monta no navegador antes de julgá-la vazia', async (t) => {
+  let chromium;
+  try {
+    ({ chromium } = await import('playwright'));
+  } catch {
+    return t.skip('Playwright indisponível');
+  }
+
+  const executablePath = process.env.PLAYWRIGHT_EXECUTABLE_PATH;
+  let navegador;
+  try {
+    navegador = await chromium.launch({
+      args: ['--no-sandbox'],
+      ...(executablePath ? { executablePath } : {}),
+    });
+  } catch {
+    return t.skip('Chromium indisponível');
+  }
+
+  const { esperarConteudo, diagnosticar } = await import('../src/provedores/ecac.js');
+  const pagina = await navegador.newPage();
+
+  try {
+    // O login do e-CAC chega como casca vazia e se preenche depois. Olhar
+    // imediatamente devolve "título vazio, nenhum link" — que foi o diagnóstico
+    // errado que essa espera existe para impedir.
+    await pagina.setContent(`
+      <div id="app"></div>
+      <script>
+        setTimeout(() => {
+          document.title = 'Login e-CAC';
+          document.getElementById('app').innerHTML =
+            '<a href="/gov">Entrar com gov.br</a><p>Escolha como deseja se identificar no portal.</p>';
+        }, 800);
+      </script>`);
+
+    assert.equal(await pagina.evaluate(() => document.body.innerText.trim()), '', 'nasce vazia');
+    assert.equal(await esperarConteudo(pagina, 8_000), true, 'espera até a tela aparecer');
+
+    const onde = await diagnosticar(pagina);
+    assert.match(onde.texto, /identificar no portal/);
+    assert.ok(onde.links.some((l) => /gov\.br/.test(l)));
+
+    // E a espera não pode ser eterna: página que nunca preenche precisa
+    // devolver "não veio" para o diagnóstico dizer isso ao operador.
+    const outra = await navegador.newPage();
+    await outra.setContent('<div id="app"></div>');
+    assert.equal(await esperarConteudo(outra, 1_500), false, 'página vazia de verdade não trava');
+  } finally {
+    await navegador.close();
+  }
+});

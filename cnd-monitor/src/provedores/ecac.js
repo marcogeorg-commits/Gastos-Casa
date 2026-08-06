@@ -13,6 +13,9 @@
  * >>> portal. Calibre antes de usar em produção.
  */
 
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { resolverCertificado } from '../certificados.js';
 import { interpretarTexto } from '../situacao.js';
 import { LOGIN_ECAC, ORIGENS_CERTIFICADO, PASSOS_LOGIN, RECEITAS_ECAC } from '../receitas/ecac.js';
@@ -21,6 +24,7 @@ import { esperarSeletor, primeiroSeletorPresente, primeiroVisivel } from './web.
 export const id = 'ecac';
 export const nome = 'e-CAC (certificado digital)';
 
+const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const TEMPO_LIMITE = 60_000;
 
 export function suporta(idCertidao) {
@@ -72,6 +76,37 @@ export async function abrirContexto(browser, certificado) {
       passphrase: certificado.senha,
     })),
   });
+}
+
+/**
+ * Espera a pagina ter conteudo de verdade antes de olhar para ela.
+ *
+ * O login do e-CAC e uma aplicacao que se monta no proprio navegador: o que o
+ * servidor manda e uma casca vazia, e o conteudo so aparece quando o script
+ * roda. `networkidle` nao cobre isso -- portal de governo mantem chamada em
+ * segundo plano, a espera nunca se cumpre, estoura o prazo em silencio (o
+ * `.catch` engole) e a rotina segue olhando a casca.
+ *
+ * Foi exatamente esse o sintoma relatado: titulo vazio, zero links, corpo sem
+ * texto, numa URL que no navegador do operador mostra a tela inteira. A pagina
+ * existia; so nao tinha nascido ainda quando perguntamos.
+ *
+ * O criterio e grosseiro de proposito -- texto no corpo OU alguns elementos
+ * clicaveis. Nao interessa QUAL tela e, so que ja exista alguma.
+ */
+export async function esperarConteudo(pagina, tempoLimite = 20_000) {
+  try {
+    await pagina.waitForFunction(
+      () =>
+        (document.body?.innerText ?? '').trim().length > 40 ||
+        document.querySelectorAll('a, button, input').length > 2,
+      undefined,
+      { timeout: tempoLimite },
+    );
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -128,6 +163,10 @@ export async function autenticado(pagina) {
  * simplesmente nao encontra o que clicar e a rotina segue.
  */
 export async function entrar(pagina, registrar = () => {}) {
+  if (!(await esperarConteudo(pagina))) {
+    registrar('      e-CAC: a tela de login nao chegou a mostrar conteudo.');
+  }
+
   for (const passo of PASSOS_LOGIN) {
     if (await autenticado(pagina)) return true;
 
@@ -139,8 +178,10 @@ export async function entrar(pagina, registrar = () => {}) {
 
     registrar(`      e-CAC: ${passo.nome}`);
     await alvo.click({ timeout: 15_000 }).catch(() => {});
-    // O handshake do certificado acontece aqui, no redirecionamento.
+    // O handshake do certificado acontece aqui, no redirecionamento -- e a tela
+    // seguinte tambem se monta no navegador, entao vale a mesma espera.
     await pagina.waitForLoadState('networkidle').catch(() => {});
+    await esperarConteudo(pagina);
   }
 
   return autenticado(pagina);
@@ -158,7 +199,46 @@ export async function diagnosticar(pagina, limite = 40) {
     )
     .catch(() => []);
 
-  return { url: pagina.url(), titulo: await pagina.title().catch(() => ''), links };
+  // Zero link e titulo vazio nao distinguem "o menu mudou" de "nao veio pagina
+  // nenhuma" -- e sao problemas opostos. O texto e o tamanho do HTML separam
+  // os dois na primeira olhada.
+  const texto = await pagina
+    .evaluate(() => (document.body?.innerText ?? '').replace(/\s+/g, ' ').trim().slice(0, 500))
+    .catch(() => '');
+  const tamanhoHtml = await pagina
+    .evaluate(() => document.documentElement.outerHTML.length)
+    .catch(() => 0);
+
+  return {
+    url: pagina.url(),
+    titulo: await pagina.title().catch(() => ''),
+    links,
+    texto,
+    tamanhoHtml,
+    // Portal do governo costuma por o conteudo em iframe; procurar so no
+    // documento principal acharia uma casca vazia e concluiria errado.
+    quadros: pagina.frames().map((f) => f.url()).filter((u) => u && u !== 'about:blank'),
+  };
+}
+
+/**
+ * Guarda a tela e o HTML de uma sessao que nao abriu.
+ *
+ * A captura mostra a tela autenticada (ou a que deveria ser), entao fica fora
+ * do versionamento -- `calibracao/ecac-*` esta no .gitignore.
+ */
+export async function registrarTela(pagina, documento) {
+  try {
+    const pasta = resolve(RAIZ, 'calibracao');
+    await mkdir(pasta, { recursive: true });
+    const base = resolve(pasta, `ecac-${String(documento).replace(/\D/g, '')}`);
+
+    await pagina.screenshot({ path: `${base}.png`, fullPage: true });
+    await writeFile(`${base}.html`, await pagina.content().catch(() => ''), 'utf8');
+    return `calibracao/ecac-${String(documento).replace(/\D/g, '')}.png`;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -200,19 +280,36 @@ export async function consultar({ cliente, idCertidao, config = {}, env = proces
   pagina.setDefaultTimeout(TEMPO_LIMITE);
 
   try {
-    await pagina.goto(LOGIN_ECAC, { waitUntil: 'domcontentloaded' });
+    // O status da resposta separa "portal recusou" de "portal veio vazio".
+    const resposta = await pagina.goto(LOGIN_ECAC, { waitUntil: 'domcontentloaded' });
     await pagina.waitForLoadState('networkidle').catch(() => {});
+    const http = resposta?.status() ?? 0;
 
     const entrou = await entrar(pagina, (m) => console.error(m));
     if (!entrou) {
       const onde = await diagnosticar(pagina, 12);
-      console.error(`      e-CAC: sessão não abriu. Tela: ${onde.titulo} — ${onde.url}`);
+      const captura = await registrarTela(pagina, cliente.documento);
+
+      console.error(`      e-CAC: sessão não abriu. HTTP ${http} — ${onde.url}`);
+      console.error(`      Título: "${onde.titulo}" · HTML com ${onde.tamanhoHtml} caracteres`);
+      console.error(`      Texto: ${onde.texto.slice(0, 300) || '(a página está vazia)'}`);
       console.error(`      Links visíveis: ${onde.links.join(' | ') || '(nenhum)'}`);
+      if (onde.quadros.length > 0) console.error(`      Quadros: ${onde.quadros.join(' | ')}`);
+      if (captura) console.error(`      Tela salva em ${captura}`);
+      // Tela sem texto nenhum e problema DIFERENTE de tela cheia com menu
+      // trocado, e a correcao de uma nao serve para a outra. Separar os dois
+      // aqui evita mandar o operador conferir procuracao quando o que houve
+      // foi a conexao morrer no handshake.
+      const vazia = onde.texto.length < 40;
       return {
         situacao: 'manual',
-        detalhe:
-          'A sessão do e-CAC não abriu com este certificado. Verifique validade, senha e se ' +
-          `há procuração eletrônica para este cliente. A tela parou em "${onde.titulo || onde.url}".`,
+        detalhe: vazia
+          ? `O portal do e-CAC respondeu HTTP ${http} e a página ficou em branco (${onde.tamanhoHtml} ` +
+            'caracteres de HTML, nenhum texto). Isso é recusa do certificado no handshake ou bloqueio ' +
+            `de rede — não menu mudado.${captura ? ` Tela em ${captura}.` : ''}`
+          : 'A sessão do e-CAC não abriu com este certificado. Verifique validade, senha e ' +
+            `se há procuração eletrônica para este cliente. A tela parou em "${onde.titulo || onde.url}".` +
+            `${captura ? ` Tela em ${captura}.` : ''}`,
       };
     }
 
