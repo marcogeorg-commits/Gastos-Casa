@@ -1,4 +1,4 @@
-import { access, stat } from 'node:fs/promises';
+import { access, readdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -111,4 +111,40 @@ export async function resolverCertificado(cliente, config = {}, env = process.en
   }
 
   return { caminho, senha, variavel };
+}
+
+/**
+ * Certificados disponiveis na pasta configurada.
+ *
+ * Devolve so o nome do arquivo -- o painel precisa de uma lista para escolher,
+ * nao do caminho completo do disco do operador.
+ */
+export async function listarCertificados(pasta, raiz = RAIZ_PROJETO) {
+  if (!pasta) return { pasta: null, arquivos: [], erro: null, dentroDoProjeto: false };
+
+  const caminho = resolve(raiz, expandirCaminho(pasta));
+
+  // Avisar aqui, no cadastro, e nao so quando a rodada falhar tres semanas
+  // depois: o operador acabou de escolher a pasta e ainda pode mudar de ideia.
+  const proibida = dentroDoProjeto(caminho, raiz);
+
+  try {
+    const entradas = await readdir(caminho, { withFileTypes: true });
+    return {
+      pasta: caminho,
+      arquivos: entradas
+        .filter((e) => e.isFile() && /\.(pfx|p12)$/i.test(e.name))
+        .map((e) => e.name)
+        .sort((a, b) => a.localeCompare(b, 'pt-BR')),
+      erro: null,
+      dentroDoProjeto: proibida,
+    };
+  } catch {
+    return {
+      pasta: caminho,
+      arquivos: [],
+      erro: `Pasta não encontrada: ${caminho}`,
+      dentroDoProjeto: proibida,
+    };
+  }
 }

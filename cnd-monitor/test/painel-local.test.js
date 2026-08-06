@@ -516,3 +516,24 @@ test('campo de resposta visível denuncia o desafio que a geometria não pega', 
     await navegador.close();
   }
 });
+
+// --- Calibração sem cadastro ----------------------------------------------
+
+test('a ajuda da calibração anuncia o caminho sem cadastro', async () => {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+
+  const { stderr } = await promisify(execFile)(process.execPath, ['src/calibrar.js'], {
+    cwd: new URL('..', import.meta.url).pathname,
+  }).catch((e) => e);
+
+  assert.match(stderr, /--documento <CNPJ>/);
+  assert.match(stderr, /sem cadastrar/);
+});
+
+test('o erro de cadastro vazio aponta a saída, em vez de só reclamar', async () => {
+  const fonte = await readFile(new URL('../src/calibrar.js', import.meta.url), 'utf8');
+  // Quem tenta calibrar com a carteira vazia precisa descobrir ali mesmo que
+  // existe `--documento`; antes o erro era um beco sem saída.
+  assert.match(fonte, /Use --documento <CNPJ> para calibrar sem cadastrar/);
+});

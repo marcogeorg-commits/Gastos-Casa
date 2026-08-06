@@ -20,8 +20,10 @@ import { IDS_RECEITAS, RECEITAS } from './receitas/index.js';
 import { IDS_ECAC, LOGIN_ECAC, RECEITAS_ECAC } from './receitas/ecac.js';
 import { detectarCaptcha, esperarSeletor, primeiroVisivel } from './provedores/web.js';
 import { abrirContexto, autenticado } from './provedores/ecac.js';
-import { carregarConfig } from './config.js';
-import { resolverCertificado } from './certificados.js';
+import { PASTA_CERTIFICADOS_PADRAO, carregarConfig } from './config.js';
+import { casarPorDocumento, listarCertificados, resolverCertificado } from './certificados.js';
+import { formatar, limpar, tipoDocumento, validar } from './documentos.js';
+import { perguntarSenha } from './senha.js';
 import { chamadoDireto } from './executavel.js';
 
 const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -106,12 +108,12 @@ export async function inventariar(pagina) {
 }
 
 /**
- * Calibração do e-CAC: entra com o certificado de um cliente e inventaria a
- * tela autenticada. Sem entrar, o inventário seria o da página de login — que
- * não tem relação com o serviço que se quer automatizar.
+ * Alvo da calibracao a partir do cadastro.
+ *
+ * Continua servindo para quem ja tem a carteira montada e quer testar um
+ * cliente especifico.
  */
-export async function calibrarEcac(idCertidao, opcoes = {}) {
-  const receita = RECEITAS_ECAC[idCertidao];
+async function alvoPorCadastro(opcoes) {
   const config = await carregarConfig(resolve(RAIZ, opcoes.clientes ?? 'clientes.json'));
 
   const cliente = opcoes.cliente
@@ -122,12 +124,63 @@ export async function calibrarEcac(idCertidao, opcoes = {}) {
     throw new Error(
       opcoes.cliente
         ? `Nenhum cliente com nome contendo "${opcoes.cliente}".`
-        : 'Nenhum cliente do cadastro tem certificado configurado.',
+        : 'Nenhum cliente do cadastro tem certificado configurado. Use --documento <CNPJ> para calibrar sem cadastrar.',
     );
   }
 
   const certificado = await resolverCertificado(cliente, config, process.env);
   if (certificado.erro) throw new Error(certificado.erro);
+  return { cliente, config, certificado };
+}
+
+/**
+ * Alvo da calibracao a partir do CNPJ, sem passar pelo cadastro.
+ *
+ * Exigir cadastro antes de calibrar invertia a ordem das coisas: o cadastro e
+ * o compromisso de acompanhar um cliente todo mes, e calibrar e justamente
+ * descobrir se ha o que acompanhar. Com o `.pfx` na pasta e o CNPJ na mao ja
+ * ha tudo que a calibracao precisa.
+ */
+async function alvoPorDocumento(documento) {
+  const bruto = limpar(documento);
+  if (!validar(bruto)) throw new Error(`"${documento}" não é um CNPJ nem um CPF válido.`);
+
+  const config = { certificados: { pastaPadrao: PASTA_CERTIFICADOS_PADRAO } };
+  const { pasta, arquivos, erro } = await listarCertificados(
+    config.certificados.pastaPadrao,
+    RAIZ,
+  );
+  if (erro) throw new Error(erro);
+
+  const arquivo = casarPorDocumento(arquivos, bruto);
+  if (!arquivo) {
+    throw new Error(
+      `Nenhum certificado em ${pasta} com ${formatar(bruto)} no nome do arquivo. ` +
+        `Encontrados: ${arquivos.length || 'nenhum'}.`,
+    );
+  }
+
+  console.log(`Certificado: ${arquivo}`);
+  const senha = await perguntarSenha();
+  if (!senha) throw new Error('Senha vazia.');
+
+  return {
+    cliente: { nome: formatar(bruto), documento: bruto, tipo: tipoDocumento(bruto) },
+    config,
+    certificado: { caminho: resolve(pasta, arquivo), senha, variavel: '(digitada agora)' },
+  };
+}
+
+/**
+ * Calibração do e-CAC: entra com o certificado e inventaria a tela autenticada.
+ * Sem entrar, o inventário seria o da página de login — que não tem relação com
+ * o serviço que se quer automatizar.
+ */
+export async function calibrarEcac(idCertidao, opcoes = {}) {
+  const receita = RECEITAS_ECAC[idCertidao];
+  const { cliente, certificado } = opcoes.documento
+    ? await alvoPorDocumento(opcoes.documento)
+    : await alvoPorCadastro(opcoes);
 
   const { chromium } = await import('playwright');
   const navegador = await chromium.launch({
@@ -310,10 +363,16 @@ if (chamadoDireto(import.meta.url)) {
   const headed = argv.includes('--headed');
   const tipo = argv[argv.indexOf('--tipo') + 1];
   const cliente = argv[argv.indexOf('--cliente') + 1];
+  const documento = argv[argv.indexOf('--documento') + 1];
 
   if (!idCertidao) {
     console.error(
-      `Uso: npm run calibrar -- <certidao> [--tipo cpf] [--cliente <nome>] [--headed]\n` +
+      `Uso: npm run calibrar -- <certidao> [opções]\n\n` +
+        `  --documento <CNPJ>   calibra o e-CAC sem cadastrar: acha o .pfx pelo\n` +
+        `                       CNPJ no nome do arquivo e pede a senha na hora\n` +
+        `  --cliente <nome>     usa um cliente já cadastrado\n` +
+        `  --tipo cpf           rota de pessoa física, onde o portal separa\n` +
+        `  --headed             mostra o navegador\n\n` +
         `Portais públicos: ${IDS_RECEITAS.join(', ')}\n` +
         `e-CAC (exige certificado): ${IDS_ECAC.join(', ')}`,
     );
@@ -324,6 +383,7 @@ if (chamadoDireto(import.meta.url)) {
     headed,
     tipo: argv.includes('--tipo') ? tipo : undefined,
     cliente: argv.includes('--cliente') ? cliente : undefined,
+    documento: argv.includes('--documento') ? documento : undefined,
   }).catch((erro) => {
     console.error(`Erro: ${erro.message}`);
     process.exit(1);

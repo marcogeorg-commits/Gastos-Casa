@@ -20,12 +20,12 @@
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
-import { copyFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { dirname, extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chamadoDireto } from './executavel.js';
 import { carregarAmbiente, temSenha } from './ambiente.js';
-import { casarPorDocumento, dentroDoProjeto, expandirCaminho } from './certificados.js';
+import { casarPorDocumento, listarCertificados } from './certificados.js';
 import { PASTA_CERTIFICADOS_PADRAO, configAvulsa, credenciaisDoAmbiente } from './config.js';
 import { executar } from './executor.js';
 import { descreverSituacao } from './catalogo.js';
@@ -47,6 +47,9 @@ const TIPOS = {
 };
 
 export const TOKEN = randomUUID();
+
+// Reexportada por conveniencia: o painel a consome atraves deste modulo.
+export { listarCertificados };
 
 /**
  * Nao servir, mesmo estando dentro da pasta.
@@ -208,42 +211,6 @@ async function lerJson(caminho) {
     return JSON.parse(await readFile(caminho, 'utf8'));
   } catch {
     return null;
-  }
-}
-
-/**
- * Certificados disponiveis na pasta configurada.
- *
- * Devolve so o nome do arquivo -- o painel precisa de uma lista para escolher,
- * nao do caminho completo do disco do operador.
- */
-export async function listarCertificados(pasta, raiz = RAIZ) {
-  if (!pasta) return { pasta: null, arquivos: [], erro: null, dentroDoProjeto: false };
-
-  const caminho = resolve(raiz, expandirCaminho(pasta));
-
-  // Avisar aqui, no cadastro, e nao so quando a rodada falhar tres semanas
-  // depois: o operador acabou de escolher a pasta e ainda pode mudar de ideia.
-  const proibida = dentroDoProjeto(caminho, raiz);
-
-  try {
-    const entradas = await readdir(caminho, { withFileTypes: true });
-    return {
-      pasta: caminho,
-      arquivos: entradas
-        .filter((e) => e.isFile() && /\.(pfx|p12)$/i.test(e.name))
-        .map((e) => e.name)
-        .sort((a, b) => a.localeCompare(b, 'pt-BR')),
-      erro: null,
-      dentroDoProjeto: proibida,
-    };
-  } catch {
-    return {
-      pasta: caminho,
-      arquivos: [],
-      erro: `Pasta não encontrada: ${caminho}`,
-      dentroDoProjeto: proibida,
-    };
   }
 }
 
