@@ -220,10 +220,7 @@ function gravar({ imediato = false } = {}) {
 // ---------------------------------------------------------------------------
 const importacao = { senha: '', lendo: false, lidos: null, erro: null };
 
-const avulsa = {
-  documento: '', certidoes: null, municipio: '', senha: '', certificado: '',
-  rodando: false, saida: null,
-};
+const avulsa = { documento: '', certidoes: null, municipio: '', rodando: false, saida: null };
 
 /**
  * Certificado deste documento: a escolha já feita antes do palpite pelo nome.
@@ -273,8 +270,7 @@ function renderAvulsa() {
   }).join('');
 
   const precisaMunicipio = escolhidas.includes('municipal') && tipo === 'cnpj';
-  const cert = valido ? (avulsa.certificado || certificadoDe(avulsa.documento)) : null;
-  const disponiveis = estado.certificados?.arquivos ?? [];
+  const cert = valido ? certificadoDe(avulsa.documento) : null;
   // Senha já validada na aba Certificados: não há por que pedir de novo.
   const senhaPronta = Boolean(estado.senhasPorDocumento?.[limpar(avulsa.documento)]);
   const querCertificado = escolhidas.some((id) => SO_COM_CERTIFICADO.includes(id));
@@ -329,37 +325,15 @@ function renderAvulsa() {
           ${senhaPronta && cert ? `
             <p class="ajuda" style="margin:0">
               <span class="selo selo--good"><span class="selo__icone">●</span>Certificado pronto</span>
-              — <code>${esc(cert)}</code>, com a senha já validada. Nada a fazer aqui.
-            </p>
-          ` : disponiveis.length === 0 ? `
-            <p class="ajuda" style="margin:0">
-              CADIN e Situação Fiscal exigem certificado digital, e não há nenhum
-              <code>.pfx</code> na pasta configurada. Veja a aba <strong>Certificados</strong>.
+              — <code>${esc(cert)}</code>. Nada a fazer aqui.
             </p>
           ` : `
-            <p class="ajuda" style="margin:0 0 10px">
-              CADIN e Situação Fiscal exigem o certificado digital deste cliente.
-              ${cert
-                ? 'Escolha guardada — não precisa apontar de novo.'
-                : 'Escolha o arquivo desta vez; o programa lembra nas próximas.'}
+            <p class="ajuda" style="margin:0 0 12px">
+              CADIN e Situação Fiscal exigem o certificado digital deste cliente, e ele
+              ${cert ? 'ainda não teve a senha validada' : 'ainda não foi identificado'}.
+              O certificado é configurado uma vez só, na aba Certificados — não aqui.
             </p>
-            <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">
-              <div style="flex:1 1 280px;max-width:420px">
-                <select id="avulsa-cert" style="width:100%">
-                  <option value="">— escolha o certificado —</option>
-                  ${disponiveis.map((a) =>
-                    `<option value="${esc(a)}" ${a === cert ? 'selected' : ''}>${esc(a)}</option>`).join('')}
-                </select>
-              </div>
-              <div style="flex:0 1 240px">
-                <input type="password" id="avulsa-senha" value="${esc(avulsa.senha)}"
-                       placeholder="Senha do certificado" autocomplete="off">
-              </div>
-            </div>
-            <p class="ajuda" style="margin:8px 0 0;font-size:13px">
-              A senha é usada só nesta consulta, em memória — não é gravada em lugar
-              nenhum. Para as rodadas mensais, ela vai no <code>.env</code>.
-            </p>
+            <button id="ir-certificados">Configurar o certificado</button>
           `}
         </div>` : ''}
       </div>
@@ -394,8 +368,6 @@ async function rodarAvulsa() {
           cobertasPor(provedor).includes(id),
         ),
         municipio: avulsa.municipio || null,
-        senha: avulsa.senha || null,
-        certificado: avulsa.certificado || certificadoDe(avulsa.documento) || null,
         provedor,
       }),
     });
@@ -998,11 +970,6 @@ document.addEventListener('input', (e) => {
   }
 
   // Não redesenha: a senha some do campo a cada tecla se a tela for refeita.
-  if (alvo.id === 'avulsa-senha') {
-    avulsa.senha = alvo.value;
-    return;
-  }
-
   if (alvo.id === 'imp-senha') {
     importacao.senha = alvo.value;
     const botao = document.getElementById('imp-ler');
@@ -1049,17 +1016,10 @@ document.addEventListener('input', (e) => {
 document.addEventListener('change', async (e) => {
   if (e.target.id === 'avulsa-cliente') {
     avulsa.documento = e.target.value;
-    avulsa.certificado = '';
     const cliente = (estado.config?.clientes ?? []).find(
       (c) => limpar(c.documento) === e.target.value,
     );
     avulsa.municipio = cliente?.municipio ?? '';
-    renderAvulsa();
-    return;
-  }
-
-  if (e.target.id === 'avulsa-cert') {
-    avulsa.certificado = e.target.value;
     renderAvulsa();
     return;
   }
@@ -1153,11 +1113,16 @@ document.addEventListener('click', async (e) => {
   const consultar = e.target.closest('[data-consultar]');
   if (consultar) {
     avulsa.documento = consultar.dataset.consultar;
-    avulsa.certificado = '';
     avulsa.certidoes = null;
     document.querySelector('.aba[data-painel="avulsa"]').click();
     renderAvulsa();
     await rodarAvulsa();
+    return;
+  }
+
+  if (e.target.id === 'ir-certificados') {
+    document.querySelector('.aba[data-painel="certificados"]').click();
+    document.getElementById('imp-senha')?.focus();
     return;
   }
 
