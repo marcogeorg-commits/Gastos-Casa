@@ -16,6 +16,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { confiarNasCasDoSistema, falhaDeCadeia } from '../ca-sistema.js';
 import { resolverCertificado } from '../certificados.js';
 import { interpretarTexto } from '../situacao.js';
 import { LOGIN_ECAC, ORIGENS_CERTIFICADO, PASSOS_LOGIN, RECEITAS_ECAC } from '../receitas/ecac.js';
@@ -40,6 +41,11 @@ let navegador = null;
 
 async function abrirNavegador(env) {
   if (navegador) return navegador;
+
+  // Antes de qualquer conexão: o túnel TLS do Playwright roda neste processo, e
+  // é ele que precisa reconhecer a cadeia da ICP-Brasil.
+  const cas = confiarNasCasDoSistema();
+  if (!cas.aplicado) console.error(`      e-CAC: ${cas.motivo}`);
 
   let chromium;
   try {
@@ -300,6 +306,20 @@ export async function consultar({ cliente, idCertidao, config = {}, env = proces
       // trocado, e a correcao de uma nao serve para a outra. Separar os dois
       // aqui evita mandar o operador conferir procuracao quando o que houve
       // foi a conexao morrer no handshake.
+      // A falha de cadeia se disfarça de portal fora do ar: HTTP 503, página de
+      // 193 caracteres. Sem reconhecê-la, a mensagem mandava o operador
+      // conferir validade, senha e procuração -- nenhuma das três em causa.
+      if (falhaDeCadeia(onde.texto)) {
+        return {
+          situacao: 'manual',
+          detalhe:
+            'Esta máquina não reconhece a cadeia de certificação do portal da Receita — a conexão ' +
+            'nem chegou a ser feita. Não é o certificado do cliente, nem a senha, nem procuração. ' +
+            'Instale a cadeia da ICP-Brasil no sistema; se ela já estiver instalada, rode com ' +
+            'NODE_OPTIONS=--use-system-ca.',
+        };
+      }
+
       const vazia = onde.texto.length < 40;
       return {
         situacao: 'manual',
