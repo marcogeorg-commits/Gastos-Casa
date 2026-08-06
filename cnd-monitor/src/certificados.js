@@ -37,6 +37,27 @@ export function dentroDoProjeto(caminho, raiz = RAIZ_PROJETO) {
 }
 
 /**
+ * Acha, na lista de arquivos, o certificado que pertence a este documento.
+ *
+ * Certificado A1 emitido no Brasil quase sempre traz o CNPJ no nome do arquivo
+ * -- "EMPRESA LTDA 12345678000199.pfx" e a forma mais comum. Ler o documento de
+ * dentro do `.pfx` seria mais confiavel, mas o arquivo e cifrado: exigiria a
+ * senha so para descobrir de quem ele e, e a senha e justamente o que o
+ * operador ainda nao configurou nesse momento.
+ *
+ * Casa tambem quando o nome tem pontuacao ("12.345.678/0001-99"), porque so os
+ * digitos sao comparados. Devolve null quando ha duvida -- dois arquivos com o
+ * mesmo documento e caso para o humano escolher, nao para o programa chutar.
+ */
+export function casarPorDocumento(arquivos, documento) {
+  const alvo = String(documento ?? '').replace(/\D/g, '');
+  if (alvo.length !== 14 && alvo.length !== 11) return null;
+
+  const candidatos = arquivos.filter((nome) => nome.replace(/\D/g, '').includes(alvo));
+  return candidatos.length === 1 ? candidatos[0] : null;
+}
+
+/**
  * Resolve o certificado de um cliente. Devolve `{ erro }` em vez de lançar:
  * um cadastro problemático vira aviso no relatório, não interrupção da rodada.
  */

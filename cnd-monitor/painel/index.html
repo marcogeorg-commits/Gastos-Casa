@@ -142,12 +142,17 @@ const SITUACOES = {
 };
 
 const PROVEDORES = {
-  web: 'Automação própria (grátis)',
-  ecac: 'e-CAC com certificado digital',
+  auto: 'Automático — cada certidão pelo caminho que a atende',
+  web: 'Só portais públicos (sem certificado)',
+  ecac: 'Só e-CAC (CADIN e Situação Fiscal)',
   mock: 'Simulação — dados de teste',
   infosimples: 'InfoSimples (API paga)',
   serpro: 'SERPRO (API paga)',
 };
+
+// Quem só o e-CAC alcança. O painel usa isto para saber quando a senha do
+// certificado faz diferença na consulta rápida.
+const SO_COM_CERTIFICADO = ['cadin_federal', 'situacao_fiscal'];
 
 const descrever = (s) => SITUACOES[s] ?? SITUACOES.erro;
 
@@ -212,7 +217,20 @@ function gravar({ imediato = false } = {}) {
 // ---------------------------------------------------------------------------
 // Aba: consulta rápida — um documento, resposta na hora, sem cadastrar
 // ---------------------------------------------------------------------------
-const avulsa = { documento: '', certidoes: null, municipio: '', rodando: false, saida: null };
+const avulsa = {
+  documento: '', certidoes: null, municipio: '', senha: '',
+  rodando: false, saida: null,
+};
+
+/** Certificado da pasta cujo nome contém este documento. */
+function certificadoDe(documento) {
+  const alvo = limpar(documento).replace(/\D/g, '');
+  if (alvo.length !== 14 && alvo.length !== 11) return null;
+
+  const casam = (estado.certificados?.arquivos ?? [])
+    .filter((nome) => nome.replace(/\D/g, '').includes(alvo));
+  return casam.length === 1 ? casam[0] : null;
+}
 
 function renderAvulsa() {
   const alvo = document.getElementById('painel-avulsa');
@@ -228,6 +246,8 @@ function renderAvulsa() {
   }).join('');
 
   const precisaMunicipio = escolhidas.includes('municipal') && tipo === 'cnpj';
+  const cert = valido ? certificadoDe(avulsa.documento) : null;
+  const querCertificado = escolhidas.some((id) => SO_COM_CERTIFICADO.includes(id));
 
   alvo.innerHTML = `
     <section>
@@ -256,6 +276,30 @@ function renderAvulsa() {
 
         <p class="ajuda" style="margin:18px 0 8px">Certidões desta consulta:</p>
         <div class="marcadores">${marcadores}</div>
+
+        ${querCertificado && valido ? `
+        <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--linha)">
+          ${cert ? `
+            <p class="ajuda" style="margin:0 0 10px">
+              CADIN e Situação Fiscal exigem o certificado digital. Encontrei
+              <code>${esc(cert)}</code> na pasta, pelo CNPJ no nome do arquivo.
+            </p>
+            <div style="max-width:300px">
+              <input type="password" id="avulsa-senha" value="${esc(avulsa.senha)}"
+                     placeholder="Senha do certificado" autocomplete="off">
+            </div>
+            <p class="ajuda" style="margin:8px 0 0;font-size:13px">
+              Usada só nesta consulta, em memória — não é gravada em lugar nenhum.
+              Para as rodadas mensais, a senha vai no <code>.env</code>.
+            </p>
+          ` : `
+            <p class="ajuda" style="margin:0">
+              CADIN e Situação Fiscal exigem certificado digital, e não achei nenhum
+              <code>.pfx</code> na pasta cujo nome contenha este documento. As demais
+              certidões serão consultadas normalmente.
+            </p>
+          `}
+        </div>` : ''}
       </div>
     </section>
 
@@ -303,6 +347,7 @@ async function rodarAvulsa() {
         documento: avulsa.documento,
         certidoes: avulsa.certidoes,
         municipio: avulsa.municipio || null,
+        senha: avulsa.senha || null,
         provedor: document.getElementById('provedor').value,
       }),
     });
@@ -735,6 +780,12 @@ document.addEventListener('input', (e) => {
 
   if (alvo.id === 'avulsa-municipio') {
     avulsa.municipio = alvo.value;
+    return;
+  }
+
+  // Não redesenha: a senha some do campo a cada tecla se a tela for refeita.
+  if (alvo.id === 'avulsa-senha') {
+    avulsa.senha = alvo.value;
     return;
   }
 

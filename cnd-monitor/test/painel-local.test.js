@@ -377,3 +377,79 @@ test('a pasta de certificados sobrevive a uma gravação que não a mencione', (
   const salvo = sanearConfig({ clientes: [] });
   assert.equal(salvo.certificados.pastaPadrao, '../Certificados');
 });
+
+// --- Roteamento por certidão ----------------------------------------------
+
+test('cada certidão vai ao provedor que a atende', async () => {
+  const { rotear } = await import('../src/provedores/index.js');
+
+  const mapa = rotear([
+    'rfb_pgfn', 'cadin_federal', 'situacao_fiscal', 'fgts_crf', 'cndt', 'sefaz_sc',
+  ]);
+
+  // Só o e-CAC alcança CADIN e Situação Fiscal.
+  assert.equal(mapa.cadin_federal, 'ecac');
+  assert.equal(mapa.situacao_fiscal, 'ecac');
+
+  // O resto o e-CAC não atende: antes voltava "o provedor ecac não atende
+  // rfb_pgfn" e virava conferência manual sem motivo.
+  assert.equal(mapa.rfb_pgfn, 'web');
+  assert.equal(mapa.fgts_crf, 'web');
+  assert.equal(mapa.cndt, 'web');
+});
+
+test('"auto" na consulta avulsa distribui em vez de impor um provedor', async () => {
+  const { configAvulsa } = await import('../src/config.js');
+
+  const config = configAvulsa({
+    documento: '11.222.333/0001-81',
+    certidoes: ['rfb_pgfn', 'cadin_federal'],
+    provedor: 'auto',
+  });
+
+  assert.equal(config.provedores.cadin_federal, 'ecac');
+  assert.equal(config.provedores.rfb_pgfn, 'web');
+});
+
+test('escolher um provedor específico continua valendo para tudo', async () => {
+  const { configAvulsa } = await import('../src/config.js');
+
+  const config = configAvulsa({ documento: '11.222.333/0001-81', provedor: 'mock' });
+  assert.equal(config.provedorPadrao, 'mock');
+  assert.deepEqual(config.provedores, {});
+});
+
+// --- Casamento do certificado ---------------------------------------------
+
+test('o certificado é reconhecido pelo CNPJ no nome do arquivo', async () => {
+  const { casarPorDocumento } = await import('../src/certificados.js');
+
+  const pasta = [
+    'TOCA DA ONCA LTDA 56049783000152.pfx',
+    'OUTRA EMPRESA 11222333000181.pfx',
+    'anotacoes.txt',
+  ];
+
+  assert.equal(casarPorDocumento(pasta, '56.049.783/0001-52'), 'TOCA DA ONCA LTDA 56049783000152.pfx');
+  assert.equal(casarPorDocumento(pasta, '56049783000152'), 'TOCA DA ONCA LTDA 56049783000152.pfx');
+});
+
+test('o nome do arquivo pode vir com o CNPJ pontuado', async () => {
+  const { casarPorDocumento } = await import('../src/certificados.js');
+  const pasta = ['EMPRESA 56.049.783-0001-52 (A1).pfx'];
+  assert.equal(casarPorDocumento(pasta, '56049783000152'), pasta[0]);
+});
+
+test('na dúvida o programa não escolhe certificado', async () => {
+  const { casarPorDocumento } = await import('../src/certificados.js');
+
+  // Dois arquivos do mesmo CNPJ (renovação): quem decide é o humano.
+  const duplicado = ['EMP 56049783000152 2025.pfx', 'EMP 56049783000152 2026.pfx'];
+  assert.equal(casarPorDocumento(duplicado, '56049783000152'), null);
+
+  // Nenhum arquivo com esse documento.
+  assert.equal(casarPorDocumento(['OUTRA 11222333000181.pfx'], '56049783000152'), null);
+
+  // Documento incompleto não pode casar por acidente.
+  assert.equal(casarPorDocumento(['EMP 56049783000152.pfx'], '5604'), null);
+});

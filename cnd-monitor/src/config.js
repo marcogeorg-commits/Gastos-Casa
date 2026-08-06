@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { CATALOGO, IDS_CERTIDOES } from './catalogo.js';
+import { rotear } from './provedores/index.js';
 import { formatar, limpar, tipoDocumento, validar } from './documentos.js';
 
 const PROVEDOR_PADRAO = 'mock';
@@ -21,14 +22,21 @@ export async function carregarConfig(caminho) {
   }
 
   const avisos = [];
-  const provedorPadrao = bruto.provedorPadrao ?? PROVEDOR_PADRAO;
-  const provedores = { ...(bruto.provedores ?? {}) };
+  const pedido = bruto.provedorPadrao ?? PROVEDOR_PADRAO;
 
   const certidoesAtivas = (bruto.certidoes ?? IDS_CERTIDOES).filter((id) => {
     if (CATALOGO[id]) return true;
     avisos.push(`Certidão desconhecida ignorada: "${id}"`);
     return false;
   });
+
+  // "auto" manda escolher um provedor por certidao, em vez de impor o mesmo a
+  // todas. Overrides explicitos do arquivo continuam valendo por cima.
+  const automatico = pedido === 'auto';
+  const provedorPadrao = automatico ? 'web' : pedido;
+  const provedores = automatico
+    ? { ...rotear(certidoesAtivas), ...(bruto.provedores ?? {}) }
+    : { ...(bruto.provedores ?? {}) };
 
   const clientes = [];
   for (const [i, cru] of (bruto.clientes ?? []).entries()) {
@@ -109,10 +117,11 @@ export async function carregarConfig(caminho) {
 export function configAvulsa({
   documento,
   certidoes = null,
-  provedor = 'web',
+  provedor = 'auto',
   municipio = null,
   dataNascimento = null,
   certificados = {},
+  certificado = null,
 }) {
   const limpo = limpar(documento);
   const tipo = tipoDocumento(limpo);
@@ -143,9 +152,12 @@ export function configAvulsa({
     throw new Error(`Nenhuma das certidões escolhidas se aplica a este ${tipo.toUpperCase()}.`);
   }
 
+  // "auto" nao e um provedor: e a instrucao de escolher um por certidao.
+  const automatico = provedor === 'auto';
+
   return {
-    provedorPadrao: provedor,
-    provedores: {},
+    provedorPadrao: automatico ? 'web' : provedor,
+    provedores: automatico ? rotear(ativas) : {},
     certidoesAtivas: ativas,
     clientes: [
       {
@@ -157,7 +169,7 @@ export function configAvulsa({
         dataNascimento,
         uf: null,
         observacao: null,
-        certificado: null,
+        certificado,
         certidoes: ativas,
       },
     ],

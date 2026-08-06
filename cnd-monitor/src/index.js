@@ -9,6 +9,7 @@ import { descreverSituacao } from './catalogo.js';
 import { executar, planejar } from './executor.js';
 import { gerarHtml } from './relatorio.js';
 import { carregarAnterior, compararComAnterior, escreverIndice } from './historico.js';
+import { rotear } from './provedores/index.js';
 
 const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -55,7 +56,12 @@ cnd-monitor — consulta mensal de certidões da carteira de clientes
   const pastaSaida = resolve(RAIZ, args.saida ?? '.');
 
   const config = await carregarConfig(caminhoClientes);
-  if (args.provedor) {
+  if (args.provedor === 'auto') {
+    // Cada certidao vai ao provedor que a atende. Sem isso, escolher "ecac"
+    // marcava como manual as cinco certidoes que ele nao cobre.
+    config.provedorPadrao = 'web';
+    config.provedores = rotear(config.certidoesAtivas);
+  } else if (args.provedor) {
     // Forcar um provedor na linha de comando vale para tudo: os overrides por
     // certidao do arquivo nao podem sobreviver a um "--provedor web".
     config.provedorPadrao = args.provedor;

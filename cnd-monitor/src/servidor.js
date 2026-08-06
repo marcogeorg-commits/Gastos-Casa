@@ -25,7 +25,7 @@ import { dirname, extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chamadoDireto } from './executavel.js';
 import { carregarAmbiente, temSenha } from './ambiente.js';
-import { dentroDoProjeto, expandirCaminho } from './certificados.js';
+import { casarPorDocumento, dentroDoProjeto, expandirCaminho } from './certificados.js';
 import { PASTA_CERTIFICADOS_PADRAO, configAvulsa, credenciaisDoAmbiente } from './config.js';
 import { executar } from './executor.js';
 import { descreverSituacao } from './catalogo.js';
@@ -260,7 +260,7 @@ export async function garantirCadastro(raiz = RAIZ) {
   if (await lerJson(destino)) return { criado: false, caminho: destino };
 
   const esqueleto = {
-    provedorPadrao: 'web',
+    provedorPadrao: 'auto',
     certificados: { pastaPadrao: PASTA_CERTIFICADOS_PADRAO },
     clientes: [],
   };
@@ -270,7 +270,7 @@ export async function garantirCadastro(raiz = RAIZ) {
 
 async function montarEstado(raiz) {
   const config = (await lerJson(resolve(raiz, 'clientes.json'))) ?? {
-    provedorPadrao: 'web',
+    provedorPadrao: 'auto',
     certificados: { pastaPadrao: PASTA_CERTIFICADOS_PADRAO },
     clientes: [],
   };
@@ -369,15 +369,30 @@ async function tratarApi(req, res, rota, raiz, porta) {
   if (rota === '/api/avulsa' && req.method === 'POST') {
     const corpo = await lerCorpo(req);
 
+    // Certificado da pasta, casado pelo CNPJ no nome do arquivo. É o que
+    // torna "já tenho os certificados na pasta" suficiente para consultar.
+    const config0 = (await lerJson(resolve(raiz, 'clientes.json'))) ?? {};
+    const pasta = config0.certificados?.pastaPadrao ?? PASTA_CERTIFICADOS_PADRAO;
+    const { arquivos } = await listarCertificados(pasta, raiz);
+
+    const arquivo = corpo.certificado || casarPorDocumento(arquivos, corpo.documento);
+    const senha = String(corpo.senha ?? '');
+
+    // A senha vive só nesta requisição: entra num ambiente descartável passado
+    // à execução e nunca é gravada em disco nem devolvida ao navegador.
+    const VARIAVEL = 'SENHA_DESTA_CONSULTA';
+    const ambiente = arquivo && senha ? { ...process.env, [VARIAVEL]: senha } : process.env;
+
     let config;
     try {
       config = configAvulsa({
         documento: corpo.documento,
         certidoes: corpo.certidoes,
-        provedor: corpo.provedor ?? 'web',
+        provedor: corpo.provedor ?? 'auto',
         municipio: corpo.municipio ?? null,
         dataNascimento: corpo.dataNascimento ?? null,
-        certificados: { pastaPadrao: PASTA_CERTIFICADOS_PADRAO },
+        certificados: { pastaPadrao: pasta },
+        certificado: arquivo ? { arquivo, senhaVariavel: VARIAVEL } : null,
       });
     } catch (erro) {
       responderJson(res, 400, { erro: erro.message });
@@ -388,7 +403,7 @@ async function tratarApi(req, res, rota, raiz, porta) {
     // 30s de espera), o que faz sentido numa rodada mensal desacompanhada e
     // nao faz nenhum com alguem esperando na frente da tela.
     const execucao = await Promise.race([
-      executar(config, credenciaisDoAmbiente(process.env), { concorrencia: 4 }),
+      executar(config, credenciaisDoAmbiente(ambiente), { concorrencia: 4, env: ambiente }),
       new Promise((_, falhar) =>
         setTimeout(
           () =>
@@ -406,6 +421,7 @@ async function tratarApi(req, res, rota, raiz, porta) {
 
     responderJson(res, 200, {
       documento: config.clientes[0].documentoFormatado,
+      certificado: arquivo ?? null,
       avisos: execucao.avisos,
       resultados: execucao.resultados.map((r) => ({
         certidao: r.certidao,
