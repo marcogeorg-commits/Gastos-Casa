@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { CATALOGO, IDS_CERTIDOES } from './catalogo.js';
-import { rotear } from './provedores/index.js';
+import { cadeiaDe, rotear } from './provedores/index.js';
 import { formatar, limpar, tipoDocumento, validar } from './documentos.js';
 
 const PROVEDOR_PADRAO = 'mock';
@@ -32,10 +32,10 @@ export async function carregarConfig(caminho) {
 
   // "auto" manda escolher um provedor por certidao, em vez de impor o mesmo a
   // todas. Overrides explicitos do arquivo continuam valendo por cima.
-  const automatico = pedido === 'auto';
-  const provedorPadrao = automatico ? 'web' : pedido;
-  const provedores = automatico
-    ? { ...rotear(certidoesAtivas), ...(bruto.provedores ?? {}) }
+  const cadeia = cadeiaDe(pedido);
+  const provedorPadrao = cadeia ? cadeia[cadeia.length - 1] : pedido;
+  const provedores = cadeia
+    ? { ...rotear(certidoesAtivas, cadeia), ...(bruto.provedores ?? {}) }
     : { ...(bruto.provedores ?? {}) };
 
   const clientes = [];
@@ -152,12 +152,13 @@ export function configAvulsa({
     throw new Error(`Nenhuma das certidões escolhidas se aplica a este ${tipo.toUpperCase()}.`);
   }
 
-  // "auto" nao e um provedor: e a instrucao de escolher um por certidao.
-  const automatico = provedor === 'auto';
+  // "auto" e "assistido" nao sao um provedor so: sao a instrucao de escolher
+  // um por certidao.
+  const cadeia = cadeiaDe(provedor);
 
   return {
-    provedorPadrao: automatico ? 'web' : provedor,
-    provedores: automatico ? rotear(ativas) : {},
+    provedorPadrao: cadeia ? cadeia[cadeia.length - 1] : provedor,
+    provedores: cadeia ? rotear(ativas, cadeia) : {},
     certidoesAtivas: ativas,
     clientes: [
       {

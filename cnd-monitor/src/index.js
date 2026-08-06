@@ -4,12 +4,19 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chamadoDireto } from './executavel.js';
 import { carregarAmbiente } from './ambiente.js';
-import { carregarConfig, credenciaisDoAmbiente } from './config.js';
+import {
+  PASTA_CERTIFICADOS_PADRAO,
+  carregarConfig,
+  configAvulsa,
+  credenciaisDoAmbiente,
+} from './config.js';
+import { casarPorDocumento, listarCertificados } from './certificados.js';
+import { limpar } from './documentos.js';
 import { descreverSituacao } from './catalogo.js';
 import { executar, planejar } from './executor.js';
 import { gerarHtml } from './relatorio.js';
 import { carregarAnterior, compararComAnterior, escreverIndice } from './historico.js';
-import { rotear } from './provedores/index.js';
+import { cadeiaDe, rotear } from './provedores/index.js';
 
 const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -29,6 +36,32 @@ function competenciaAtual(agora = new Date()) {
   return `${agora.getUTCFullYear()}-${String(agora.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
+/**
+ * Rotulo do relatorio de uma consulta avulsa.
+ *
+ * Nao usa a competencia do mes: sobrescreveria o acompanhamento da carteira
+ * com o resultado de um documento so. O nome carrega o documento e a data.
+ */
+export function rotuloAvulso(documento, agora = new Date()) {
+  const dia = agora.toISOString().slice(0, 10);
+  return `avulso-${limpar(documento)}-${dia}`;
+}
+
+/**
+ * Anexa ao cliente avulso o certificado da pasta, quando houver.
+ *
+ * Sem isso, CADIN e Situacao Fiscal voltam "sem certificado no cadastro" mesmo
+ * com o `.pfx` ali do lado -- que foi exatamente o que aconteceu.
+ */
+async function anexarCertificado(config, documento) {
+  const { arquivos } = await listarCertificados(config.certificados?.pastaPadrao);
+  const arquivo = casarPorDocumento(arquivos, documento);
+  if (!arquivo) return;
+
+  const variavel = `CERT_${limpar(documento)}`;
+  config.clientes[0].certificado = { arquivo, senhaVariavel: variavel };
+}
+
 export async function principal(argv = process.argv.slice(2), env = process.env) {
   const args = lerArgumentos(argv);
 
@@ -40,6 +73,9 @@ export async function principal(argv = process.argv.slice(2), env = process.env)
     console.log(`
 cnd-monitor — consulta mensal de certidões da carteira de clientes
 
+  --documento <CNPJ>       consulta avulsa de um documento, sem cadastro
+  --certidoes <a,b,c>      quais certidões na consulta avulsa
+  --municipio <nome>       exigido pela CND Municipal
   --clientes <arquivo>     padrão: clientes.json
   --provedor <id>          sobrescreve o provedorPadrao
                            (web | ecac | mock | infosimples | serpro)
@@ -52,15 +88,34 @@ cnd-monitor — consulta mensal de certidões da carteira de clientes
   }
 
   const caminhoClientes = resolve(RAIZ, args.clientes ?? 'clientes.json');
-  const competencia = args.competencia ?? competenciaAtual();
   const pastaSaida = resolve(RAIZ, args.saida ?? '.');
 
-  const config = await carregarConfig(caminhoClientes);
-  if (args.provedor === 'auto') {
+  // Consulta avulsa: um documento, sem cadastro. Roda pelo mesmo caminho da
+  // rodada mensal de propósito -- é assim que ela ganha o progresso ao vivo no
+  // painel e o relatório no fim, em vez de ser uma chamada muda que devolve
+  // uma tabela e não guarda nada.
+  const avulso = Boolean(args.documento);
+  const competencia = args.competencia ?? (avulso ? rotuloAvulso(args.documento) : competenciaAtual());
+
+  const config = avulso
+    ? configAvulsa({
+        documento: String(args.documento),
+        certidoes: args.certidoes ? String(args.certidoes).split(',') : null,
+        provedor: args.provedor ?? 'auto',
+        municipio: args.municipio ? String(args.municipio) : null,
+        certificados: { pastaPadrao: PASTA_CERTIFICADOS_PADRAO },
+      })
+    : await carregarConfig(caminhoClientes);
+
+  if (avulso) {
+    await anexarCertificado(config, String(args.documento));
+  }
+  const cadeia = args.provedor ? cadeiaDe(String(args.provedor)) : null;
+  if (cadeia) {
     // Cada certidao vai ao provedor que a atende. Sem isso, escolher "ecac"
     // marcava como manual as cinco certidoes que ele nao cobre.
-    config.provedorPadrao = 'web';
-    config.provedores = rotear(config.certidoesAtivas);
+    config.provedorPadrao = cadeia[cadeia.length - 1];
+    config.provedores = rotear(config.certidoesAtivas, cadeia);
   } else if (args.provedor) {
     // Forcar um provedor na linha de comando vale para tudo: os overrides por
     // certidao do arquivo nao podem sobreviver a um "--provedor web".
@@ -130,8 +185,8 @@ cnd-monitor — consulta mensal de certidões da carteira de clientes
   // Comparacao contra a ultima execucao anterior -- carregada antes de gravar a
   // desta competencia, senao ela compararia consigo mesma numa re-execucao.
   const pastaHistorico = resolve(pastaSaida, 'historico');
-  const anterior = await carregarAnterior(pastaHistorico, competencia);
-  const comparacao = compararComAnterior(execucao.resultados, anterior);
+  const anterior = avulso ? null : await carregarAnterior(pastaHistorico, competencia);
+  const comparacao = anterior ? compararComAnterior(execucao.resultados, anterior) : null;
 
   const html = gerarHtml({ competencia, execucao, config, comparacao });
 

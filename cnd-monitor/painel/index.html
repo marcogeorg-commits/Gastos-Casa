@@ -254,7 +254,8 @@ function renderAvulsa() {
     <section>
       <h2>Consulta rápida</h2>
       <p class="ajuda">Para quando o telefone toca e você só precisa dar uma olhada num CNPJ.
-        Não cadastra ninguém e não entra no histórico — é uma pergunta, não um acompanhamento.</p>
+        Não cadastra ninguém na carteira, mas <strong>grava um relatório</strong> em
+        <code>relatorios/</code> — o resultado não se perde quando você fecha a página.</p>
 
       <div class="cartao cartao--ar">
         <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start">
@@ -304,59 +305,48 @@ function renderAvulsa() {
       </div>
     </section>
 
-    ${avulsa.saida ? secaoResultadoAvulso(avulsa.saida) : ''}`;
-}
-
-function secaoResultadoAvulso(saida) {
-  if (saida.erro) {
-    return `<section><div class="aviso aviso--perigo">
-      <span class="aviso__i">▲</span><span>${esc(saida.erro)}</span></div></section>`;
-  }
-
-  const linhas = saida.resultados.map((r) => `
-    <tr>
-      <th scope="row">${esc(r.certidaoNome)}<span class="doc">${esc(r.orgao)}</span></th>
-      <td>${selo(r.situacao)}</td>
-      <td>${r.validaAte ? `vence ${esc(r.validaAte)}` : '—'}</td>
-      <td class="ajuda" style="margin:0;font-size:13px">${esc(r.detalhe).slice(0, 240)}
-        ${r.urlManual ? `<a href="${esc(r.urlManual)}" target="_blank" rel="noopener">portal</a>` : ''}</td>
-    </tr>`).join('');
-
-  return `
+    ${avulsa.saida ? `
     <section>
-      <h2>${esc(saida.documento)}</h2>
-      <div class="cartao rolagem">
-        <table>
-          <thead><tr><th>Certidão</th><th>Situação</th><th>Validade</th><th>O que o órgão respondeu</th></tr></thead>
-          <tbody>${linhas}</tbody>
-        </table>
+      <h2>Última consulta avulsa</h2>
+      <div class="cartao cartao--ar">
+        <p class="ajuda" style="margin:0">
+          Resultado gravado em <code>${esc(avulsa.saida)}</code>.
+          <a href="/relatorios/${esc(avulsa.saida)}.html" target="_blank" rel="noopener">Abrir relatório</a>
+        </p>
       </div>
-      ${saida.avisos?.length ? `<div class="cartao" style="margin-top:12px">
-        <ul class="avisos">${saida.avisos.map((a) => `<li>${esc(a)}</li>`).join('')}</ul></div>` : ''}
-    </section>`;
+    </section>` : ''}`;
 }
 
 async function rodarAvulsa() {
-  avulsa.rodando = true;
-  avulsa.saida = null;
-  renderAvulsa();
+  const provedor = document.getElementById('provedor').value;
 
+  // Passa pela mesma máquina da rodada mensal: é assim que o andamento aparece
+  // ao vivo e o relatório fica salvo. A versão anterior era uma chamada muda —
+  // no modo assistido, sete janelas abriam sem nada explicando o que fazer.
   try {
-    avulsa.saida = await api('/api/avulsa', {
+    await api('/api/rodada', {
       method: 'POST',
       body: JSON.stringify({
         documento: avulsa.documento,
         certidoes: avulsa.certidoes,
         municipio: avulsa.municipio || null,
         senha: avulsa.senha || null,
-        provedor: document.getElementById('provedor').value,
+        provedor,
       }),
     });
   } catch (erro) {
-    avulsa.saida = { erro: erro.message };
-  } finally {
-    avulsa.rodando = false;
-    renderAvulsa();
+    avisar(erro.message);
+    return;
+  }
+
+  avulsa.rodando = true;
+  avulsa.saida = null;
+  renderAvulsa();
+  alternarBotoes(true);
+  sondagem ??= setInterval(sondar, 900);
+
+  if (provedor === 'assistido') {
+    avisar('Uma janela vai abrir por certidão. Resolva o captcha e clique em enviar.');
   }
 }
 
@@ -673,16 +663,25 @@ function renderCompetencias() {
     return;
   }
 
-  alvo.innerHTML = `
-    <section>
-      <h2>Execuções <span class="conta">${lista.length}</span></h2>
+  // Consulta avulsa e rodada da carteira ficam no mesmo lugar, mas nao sao a
+  // mesma coisa: misturar "agosto de 2026" com "56.049.783/0001-52" numa coluna
+  // chamada Competencia era a bagunca que o operador via.
+  const mensais = lista.filter((c) => /^\d{4}-\d{2}$/.test(c.competencia));
+  const avulsas = lista.filter((c) => !/^\d{4}-\d{2}$/.test(c.competencia));
+
+  const rotularAvulso = (rotulo) => {
+    const m = rotulo.match(/^avulso-([0-9A-Z]+)-(\d{4})-(\d{2})-(\d{2})$/);
+    return m ? `${formatar(m[1])} · ${m[4]}/${m[3]}/${m[2]}` : rotulo;
+  };
+
+  const tabela = (itens, cabecalho, rotular) => `
       <div class="cartao rolagem">
         <table>
-          <thead><tr><th>Competência</th><th>Clientes</th><th>Consultas</th>
+          <thead><tr><th>${cabecalho}</th><th>Clientes</th><th>Consultas</th>
             <th>Com pendência</th><th>Manuais</th><th>Relatório</th></tr></thead>
-          <tbody>${lista.map((c) => `
+          <tbody>${itens.map((c) => `
             <tr>
-              <td class="num">${esc(c.competencia)}</td>
+              <td class="num">${esc(rotular(c.competencia))}</td>
               <td class="num">${c.resumo?.clientes ?? '—'}</td>
               <td class="num">${c.resumo?.consultas ?? '—'}</td>
               <td class="num">${c.resumo?.clientesComPendencia ?? '—'}</td>
@@ -690,8 +689,18 @@ function renderCompetencias() {
               <td><a href="/relatorios/${esc(c.competencia)}.html" target="_blank" rel="noopener">abrir</a></td>
             </tr>`).join('')}</tbody>
         </table>
-      </div>
-    </section>`;
+      </div>`;
+
+  alvo.innerHTML = `
+    ${mensais.length ? `<section>
+      <h2>Rodadas da carteira <span class="conta">${mensais.length}</span></h2>
+      ${tabela(mensais, 'Competência', (r) => r)}
+    </section>` : ''}
+
+    ${avulsas.length ? `<section>
+      <h2>Consultas avulsas <span class="conta">${avulsas.length}</span></h2>
+      ${tabela(avulsas, 'Documento e data', rotularAvulso)}
+    </section>` : ''}`;
 }
 
 function renderTudo() {
@@ -753,6 +762,16 @@ async function sondar() {
     if (!r.ativa) {
       clearInterval(sondagem);
       sondagem = null;
+
+      // A última linha impressa traz o caminho do relatório; o painel só
+      // precisa do rótulo para montar o link.
+      const rotulo = r.linhas.join('\n').match(/relatorios\/([^/\s]+)\.html/)?.[1];
+      if (avulsa.rodando) {
+        avulsa.rodando = false;
+        avulsa.saida = rotulo ?? null;
+        renderAvulsa();
+      }
+
       await carregar();          // relatório e histórico novos já estão no disco
       avisar(r.codigo === 0 ? 'Consulta concluída.' : 'A consulta terminou com erro — veja o log.');
     }

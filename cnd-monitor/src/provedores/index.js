@@ -17,6 +17,24 @@ export const PROVEDORES = { mock, infosimples, serpro, web, ecac, assistido };
 const PREFERENCIA = ['ecac', 'web'];
 
 /**
+ * Cadeias de roteamento por modo escolhido.
+ *
+ * "assistido" tambem roteia: o modo assistido nao cobre CADIN nem Situacao
+ * Fiscal, que so existem dentro do e-CAC. Sem isso, escolher assistido devolvia
+ * "o provedor assistido nao atende cadin_federal" -- ruido de configuracao
+ * disfarcado de resposta do orgao.
+ */
+const CADEIAS = {
+  auto: PREFERENCIA,
+  assistido: ['ecac', 'assistido'],
+};
+
+/** Cadeia de um modo, ou null quando o id for um provedor de verdade. */
+export function cadeiaDe(modo) {
+  return CADEIAS[modo] ?? null;
+}
+
+/**
  * Escolhe, por certidao, um provedor que de fato a atenda.
  *
  * Antes havia um provedor unico para a rodada inteira. Escolher "e-CAC" fazia

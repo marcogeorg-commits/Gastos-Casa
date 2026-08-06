@@ -537,3 +537,36 @@ test('o erro de cadastro vazio aponta a saída, em vez de só reclamar', async (
   // existe `--documento`; antes o erro era um beco sem saída.
   assert.match(fonte, /Use --documento <CNPJ> para calibrar sem cadastrar/);
 });
+
+// --- Consulta avulsa gravada ----------------------------------------------
+
+test('a consulta avulsa entra no índice mas fica fora da comparação mensal', async () => {
+  const { escreverIndice, listarCompetencias, carregarAnterior } = await import(
+    '../src/historico.js'
+  );
+  const pasta = await mkdtemp(join(tmpdir(), 'hist-'));
+
+  const corpo = (n) => JSON.stringify({ geradoEm: '2026-08-06T00:00:00Z', resumo: { clientes: n } });
+  await writeFile(join(pasta, '2026-07.json'), corpo(20));
+  await writeFile(join(pasta, '2026-08.json'), corpo(20));
+  await writeFile(join(pasta, 'avulso-56049783000152-2026-08-06.json'), corpo(1));
+
+  const indice = await escreverIndice(pasta);
+  const rotulos = indice.map((e) => e.competencia);
+  assert.ok(rotulos.includes('avulso-56049783000152-2026-08-06'), 'o painel precisa listá-la');
+  assert.ok(rotulos.includes('2026-08'));
+
+  // Mas ela não pode ser o "mês anterior" de nada: compararia vinte clientes
+  // com um CNPJ solto e inventaria dezenas de mudanças.
+  assert.deepEqual(await listarCompetencias(pasta), ['2026-07', '2026-08']);
+  const anterior = await carregarAnterior(pasta, '2026-08');
+  assert.equal(anterior.competencia, '2026-07');
+});
+
+test('o rótulo da consulta avulsa carrega documento e data', async () => {
+  const { rotuloAvulso } = await import('../src/index.js');
+  assert.equal(
+    rotuloAvulso('56.049.783/0001-52', new Date('2026-08-06T12:00:00Z')),
+    'avulso-56049783000152-2026-08-06',
+  );
+});

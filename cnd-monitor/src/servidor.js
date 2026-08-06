@@ -155,7 +155,7 @@ export function sanearConfig(bruto) {
 
 // --- Rodada em andamento ---------------------------------------------------
 
-const rodada = { ativa: false, linhas: [], codigo: null, inicio: null, processo: null };
+const rodada = { ativa: false, linhas: [], codigo: null, inicio: null, rotulo: null, processo: null };
 
 function registrar(texto) {
   for (const linha of String(texto).split('\n')) {
@@ -173,18 +173,29 @@ function iniciarRodada(opcoes = {}, raiz = RAIZ) {
   const args = [resolve(raiz, 'src/index.js')];
   if (opcoes.provedor) args.push('--provedor', String(opcoes.provedor));
   if (opcoes.competencia) args.push('--competencia', String(opcoes.competencia));
+  // Consulta avulsa pelo mesmo caminho da mensal: e assim que ela ganha o
+  // progresso ao vivo e o relatorio no fim.
+  if (opcoes.documento) args.push('--documento', String(opcoes.documento));
+  if (opcoes.municipio) args.push('--municipio', String(opcoes.municipio));
+  if (opcoes.certidoes?.length) args.push('--certidoes', opcoes.certidoes.join(','));
 
   rodada.ativa = true;
   rodada.linhas = [];
   rodada.codigo = null;
   rodada.inicio = new Date().toISOString();
+  rodada.rotulo = opcoes.documento ? `Consulta de ${opcoes.documento}` : 'Rodada da carteira';
 
   // `ECAC_HEADLESS=false` deixa o navegador visivel: quando a consulta depende
   // do certificado, o operador precisa ver o que o portal esta pedindo.
-  const processo = spawn(process.execPath, args, {
-    cwd: raiz,
-    env: { ...process.env, FORCE_COLOR: '0' },
-  });
+  // A senha do certificado vai pelo ambiente do filho, nunca pelos argumentos:
+  // argumento de processo aparece em `ps` para qualquer usuario da maquina.
+  // O nome da variavel e o mesmo que `anexarCertificado` procura.
+  const ambiente = { ...process.env, FORCE_COLOR: '0' };
+  if (opcoes.documento && opcoes.senha) {
+    ambiente[`CERT_${String(opcoes.documento).replace(/\D/g, '')}`] = String(opcoes.senha);
+  }
+
+  const processo = spawn(process.execPath, args, { cwd: raiz, env: ambiente });
   rodada.processo = processo;
 
   processo.stdout.setEncoding('utf8');
@@ -246,8 +257,12 @@ async function montarEstado(raiz) {
   };
   const indice = await lerJson(resolve(raiz, 'historico/index.json'));
   const competencias = indice?.competencias ?? [];
-  const atual = competencias[0]
-    ? await lerJson(resolve(raiz, `historico/${competencias[0].competencia}.json`))
+  // A aba Situacao mostra a carteira, nao a ultima coisa que rodou: sem este
+  // filtro, uma consulta avulsa de um CNPJ passaria a ocupar o lugar do
+  // acompanhamento mensal de vinte clientes.
+  const ultimaMensal = competencias.find((c) => /^\d{4}-\d{2}$/.test(c.competencia));
+  const atual = ultimaMensal
+    ? await lerJson(resolve(raiz, `historico/${ultimaMensal.competencia}.json`))
     : null;
 
   const certificados = await listarCertificados(
@@ -329,6 +344,7 @@ async function tratarApi(req, res, rota, raiz, porta) {
       linhas: rodada.linhas,
       codigo: rodada.codigo,
       inicio: rodada.inicio,
+      rotulo: rodada.rotulo ?? null,
     });
     return;
   }

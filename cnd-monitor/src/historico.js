@@ -3,6 +3,10 @@ import { resolve } from 'node:path';
 import { descreverSituacao } from './catalogo.js';
 
 const ARQUIVO_COMPETENCIA = /^(\d{4}-\d{2})\.json$/;
+// Consulta avulsa: um documento, uma data. Fica fora da lista de competencias
+// de proposito -- entrar ali faria a comparacao mes a mes da carteira ter como
+// "anterior" a consulta de um CNPJ solto.
+const ARQUIVO_AVULSO = /^(avulso-[0-9A-Z]+-\d{4}-\d{2}-\d{2})\.json$/;
 
 /**
  * Gravidade relativa de cada situacao. E o que permite dizer se um cliente
@@ -30,6 +34,19 @@ export async function listarCompetencias(pasta) {
     const arquivos = await readdir(pasta);
     return arquivos
       .map((nome) => nome.match(ARQUIVO_COMPETENCIA)?.[1])
+      .filter(Boolean)
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
+/** Consultas avulsas gravadas, da mais antiga para a mais recente. */
+export async function listarAvulsas(pasta) {
+  try {
+    const arquivos = await readdir(pasta);
+    return arquivos
+      .map((nome) => nome.match(ARQUIVO_AVULSO)?.[1])
       .filter(Boolean)
       .sort();
   } catch {
@@ -135,7 +152,10 @@ export function descreverMudanca(mudanca) {
  * nao teria como descobrir quais competencias existem.
  */
 export async function escreverIndice(pasta) {
-  const competencias = await listarCompetencias(pasta);
+  // As avulsas entram no indice porque o painel precisa lista-las; ficam fora
+  // apenas da comparacao mes a mes. Sem isso, o operador rodava uma consulta,
+  // via o relatorio ser gravado e depois lia "sem historico" na aba ao lado.
+  const competencias = [...(await listarCompetencias(pasta)), ...(await listarAvulsas(pasta))];
   const entradas = [];
 
   for (const competencia of competencias) {
