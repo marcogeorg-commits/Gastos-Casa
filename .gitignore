@@ -1,0 +1,9 @@
+# Certificados digitais A1. NUNCA neste repositorio: um .pfx commitado fica no
+# historico do Git para sempre e, com a senha, assina como o cliente. A pasta
+# fica ao lado do projeto, nao dentro dele.
+Certificados/
+*.pfx
+*.p12
+
+# Senhas.
+.env

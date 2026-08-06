@@ -453,3 +453,23 @@ test('na dúvida o programa não escolhe certificado', async () => {
   // Documento incompleto não pode casar por acidente.
   assert.equal(casarPorDocumento(['EMP 56049783000152.pfx'], '5604'), null);
 });
+
+// --- Receita do CNDT -------------------------------------------------------
+
+test('a receita do CNDT passa pela tela inicial antes do formulário', async () => {
+  const { RECEITAS } = await import('../src/receitas/index.js');
+  const cndt = RECEITAS.cndt;
+
+  // A entrada do portal só tem botões; o campo do documento está adiante.
+  assert.equal(cndt.preparacao.length, 1);
+  assert.match(cndt.preparacao[0].candidatos.join(' '), /Emitir Certidão/);
+});
+
+test('o CNDT não se ancora nos ids gerados pelo JSF', async () => {
+  const { RECEITAS } = await import('../src/receitas/index.js');
+  const todos = JSON.stringify(RECEITAS.cndt);
+
+  // "j_id_jsp_992698495_2:..." muda a cada implantação do portal; um seletor
+  // preso a ele passaria hoje e quebraria em silêncio na próxima atualização.
+  assert.doesNotMatch(todos, /j_id_jsp/);
+});

@@ -58,6 +58,11 @@ export function receitaFormulario(config) {
     urlsPorTipo: config.urlsPorTipo,
     seletores: config.seletores,
     impedimento: config.impedimento,
+    // Exposta porque o calibrador precisa percorrer os mesmos passos antes de
+    // inventariar. Em execucao ela ja funcionava pelo closure, e foi por isso
+    // que a ausencia aqui passou despercebida: o portal era atravessado, mas o
+    // diagnostico continuava descrevendo a tela de entrada.
+    preparacao: config.preparacao,
 
     /** URLs candidatas para este cliente — o portal pode ter rota por tipo. */
     urlsPara(cliente) {
@@ -396,15 +401,52 @@ export const RECEITAS = {
     },
   }),
 
+  /**
+   * CNDT — calibrado no portal real.
+   *
+   * **Sem captcha**, o que a torna a primeira certidão de fato automatizável
+   * da carteira.
+   *
+   * A entrada (`inicio.faces`) não é o formulário: tem só dois botões, "Emitir
+   * Certidão" e "Validar Certidão". O campo do documento está na tela seguinte,
+   * e é por isso que a primeira calibração não achou candidato nenhum -- ela
+   * descrevia a porta, não a sala.
+   *
+   * Os `name` do portal são gerados pelo JSF (`j_id_jsp_992698495_2:...`) e
+   * mudam a cada implantação: ancorar neles quebraria na próxima. O texto do
+   * botão é o que permanece.
+   */
   cndt: receitaFormulario({
     id: 'cndt',
     nome: 'CNDT (TST)',
     urls: ['https://cndt-certidao.tst.jus.br/inicio.faces', 'https://cndt-certidao.tst.jus.br/'],
     formatoDocumento: 'formatado',
+    preparacao: [
+      {
+        nome: 'Emitir Certidão',
+        candidatos: [
+          'input[value="Emitir Certidão"]',
+          'input[value*="Emitir" i]',
+          'a:has-text("Emitir Certidão")',
+          'button:has-text("Emitir Certidão")',
+        ],
+      },
+    ],
     seletores: {
-      campoDocumento: ['#gerarCertidaoForm\\:cpfCnpj', 'input[name*="cpfCnpj"]'],
-      botaoEnviar: ['#gerarCertidaoForm\\:btnEmitirCertidao', 'button[type="submit"]'],
-      alvoResultado: ['.certidao', 'main', 'body'],
+      campoDocumento: [
+        // O CNPJ formatado tem 18 caracteres; o campo costuma declarar isso.
+        'input[maxlength="18"]',
+        'input[name*="cpfCnpj" i]',
+        'input[id*="cpfCnpj" i]',
+        'input[name*="cnpj" i]',
+        'input[placeholder*="CPF" i]',
+      ],
+      botaoEnviar: [
+        'input[value="Emitir Certidão"]',
+        'input[type="submit"][value*="Emitir" i]',
+        'button:has-text("Emitir")',
+      ],
+      alvoResultado: ['.certidao', 'form', 'main'],
     },
   }),
 

@@ -18,7 +18,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { IDS_RECEITAS, RECEITAS } from './receitas/index.js';
 import { IDS_ECAC, LOGIN_ECAC, RECEITAS_ECAC } from './receitas/ecac.js';
-import { detectarCaptcha, esperarSeletor } from './provedores/web.js';
+import { detectarCaptcha, esperarSeletor, primeiroVisivel } from './provedores/web.js';
 import { abrirContexto, autenticado } from './provedores/ecac.js';
 import { carregarConfig } from './config.js';
 import { resolverCertificado } from './certificados.js';
@@ -222,10 +222,32 @@ export async function calibrar(idCertidao, opcoes = {}) {
     const renderizou = await esperarApp(pagina);
     console.log(renderizou ? 'ok' : `nada apareceu em ${ESPERA_APP / 1000}s`);
 
+    // Alguns portais nao mostram o formulario na entrada: o CNDT abre so com
+    // "Emitir Certidao" e "Validar Certidao", e o campo do documento esta na
+    // tela seguinte. Sem percorrer a preparacao, o inventario descreveria a
+    // porta e nunca a sala -- foi exatamente o que aconteceu na primeira
+    // calibracao dele.
+    const passos = receita.preparacao ?? [];
+    if (passos.length > 0) {
+      console.log(`\nPreparação (${passos.length} passo${passos.length === 1 ? '' : 's'}):`);
+      for (const passo of passos) {
+        const alvo = await primeiroVisivel(pagina, passo.candidatos);
+        if (!alvo) {
+          console.log(`  ${passo.nome ?? passo.candidatos[0]} — não está na tela, pulado`);
+          continue;
+        }
+        await alvo.click({ timeout: 5000 }).catch(() => {});
+        await pagina.waitForLoadState('networkidle').catch(() => {});
+        await esperarApp(pagina);
+        console.log(`  ${passo.nome ?? passo.candidatos[0]} — clicado`);
+      }
+    }
+
     const captcha = await detectarCaptcha(pagina);
     const inventario = await inventariar(pagina);
 
-    console.log(`\nURL: ${urlAberta}`);
+    console.log(`\nURL: ${pagina.url()}`);
+    console.log(`Entrada: ${urlAberta}`);
     console.log(`Título: ${inventario.titulo}`);
     console.log(
       captcha
