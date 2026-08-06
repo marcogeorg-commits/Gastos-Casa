@@ -95,8 +95,50 @@ const ALTURA_MINIMA = 30;
  * sem nem tentar. Um desafio que exige clique ocupa espaco na tela; medir isso
  * responde exatamente a pergunta que importa.
  */
+/**
+ * Campos onde o humano digita a resposta de um desafio.
+ *
+ * Existir um campo desses visivel prova mais do que a geometria do widget: e a
+ * confissao do portal de que espera alguem lendo ou ouvindo alguma coisa.
+ */
+const MARCAS_RESPOSTA = [
+  'input[id*="resposta" i][type="text"]',
+  'input[name*="resposta" i][type="text"]',
+  'input[id*="captcha" i][type="text"]',
+  'input[name*="captcha" i][type="text"]',
+];
+
+/**
+ * Ha um campo de resposta de captcha esperando digitacao?
+ *
+ * O widget do desafio pode ser desenhado de mil formas -- canvas, imagem em
+ * base64, audio -- e nem sempre casa com os seletores conhecidos. O campo onde
+ * a resposta e digitada, nao: ele e sempre um input de texto visivel.
+ */
+async function campoDeRespostaVisivel(pagina) {
+  for (const seletor of MARCAS_RESPOSTA) {
+    const alvo = await primeiroVisivel(pagina, [seletor]);
+    if (alvo) return seletor;
+  }
+  return null;
+}
+
 export async function detectarCaptcha(pagina) {
   let achado = null;
+
+  // Antes da geometria: um campo de resposta visivel decide sozinho. Foi o que
+  // faltou no CNDT -- o reCAPTCHA la e invisivel de verdade, mas ao lado dele
+  // ha um desafio proprio com campo de resposta e botao "Ouvir". Medindo so o
+  // widget, o portal foi declarado automatizavel quando nao e.
+  const resposta = await campoDeRespostaVisivel(pagina);
+  if (resposta) {
+    return {
+      seletor: resposta,
+      provedor: 'desafio próprio do portal',
+      invisivel: false,
+      bloqueante: true,
+    };
+  }
 
   for (const seletor of MARCAS_CAPTCHA) {
     const alvos = pagina.locator(seletor);

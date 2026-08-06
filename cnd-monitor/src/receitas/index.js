@@ -404,8 +404,10 @@ export const RECEITAS = {
   /**
    * CNDT — calibrado no portal real.
    *
-   * **Sem captcha**, o que a torna a primeira certidão de fato automatizável
-   * da carteira.
+   * **Tem captcha próprio** — campo `#idCampoResposta` mais um botão "Ouvir",
+   * o par clássico de desafio acessível. A primeira calibração disse "sem
+   * captcha" porque inventariou a tela de entrada, que só tem dois botões; o
+   * desafio está no formulário, uma tela adiante.
    *
    * A entrada (`inicio.faces`) não é o formulário: tem só dois botões, "Emitir
    * Certidão" e "Validar Certidão". O campo do documento está na tela seguinte,
@@ -433,18 +435,19 @@ export const RECEITAS = {
       },
     ],
     seletores: {
+      // Ids explicitos do portal, confirmados na calibracao. Os "j_id_jsp_*"
+      // que aparecem ao lado sao gerados e nao servem de ancora.
       campoDocumento: [
-        // O CNPJ formatado tem 18 caracteres; o campo costuma declarar isso.
-        'input[maxlength="18"]',
+        '#gerarCertidaoForm\\:cpfCnpj',
         'input[name*="cpfCnpj" i]',
-        'input[id*="cpfCnpj" i]',
-        'input[name*="cnpj" i]',
-        'input[placeholder*="CPF" i]',
+        'input[maxlength="18"]',
       ],
+      // NUNCA `btnEmitirCertidaoEEnviarPorEmail`: existe no mesmo formulario e
+      // dispara envio de e-mail em nome do escritorio para o endereco digitado
+      // em `#campoEmail`. Emitir e mandar e-mail sao coisas diferentes.
       botaoEnviar: [
+        '#gerarCertidaoForm\\:btnEmitirCertidao',
         'input[value="Emitir Certidão"]',
-        'input[type="submit"][value*="Emitir" i]',
-        'button:has-text("Emitir")',
       ],
       alvoResultado: ['.certidao', 'form', 'main'],
     },

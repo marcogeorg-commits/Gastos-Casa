@@ -473,3 +473,46 @@ test('o CNDT não se ancora nos ids gerados pelo JSF', async () => {
   // preso a ele passaria hoje e quebraria em silêncio na próxima atualização.
   assert.doesNotMatch(todos, /j_id_jsp/);
 });
+
+// --- Detecção de captcha ---------------------------------------------------
+
+test('campo de resposta visível denuncia o desafio que a geometria não pega', async (t) => {
+  let chromium;
+  try {
+    ({ chromium } = await import('playwright'));
+  } catch {
+    return t.skip('Playwright indisponível');
+  }
+
+  const executablePath = process.env.PLAYWRIGHT_EXECUTABLE_PATH;
+  let navegador;
+  try {
+    navegador = await chromium.launch({
+      args: ['--no-sandbox'],
+      ...(executablePath ? { executablePath } : {}),
+    });
+  } catch {
+    return t.skip('Chromium indisponível');
+  }
+
+  const { detectarCaptcha } = await import('../src/provedores/web.js');
+  const pagina = await navegador.newPage();
+
+  try {
+    // O arranjo do CNDT: reCAPTCHA de fato invisível ao lado de um desafio
+    // próprio, com campo de resposta e botão "Ouvir". Medir só o widget
+    // declarava o portal automatizável quando ele não é.
+    await pagina.setContent(`
+      <div id="recaptcha-token" style="width:1px;height:1px"></div>
+      <label>Digite os caracteres</label>
+      <input type="text" id="idCampoResposta" style="width:200px;height:30px">
+      <button>Ouvir</button>
+    `);
+
+    const achado = await detectarCaptcha(pagina);
+    assert.equal(achado.bloqueante, true, 'o desafio precisa bloquear a automação');
+    assert.match(achado.seletor, /resposta/i);
+  } finally {
+    await navegador.close();
+  }
+});
