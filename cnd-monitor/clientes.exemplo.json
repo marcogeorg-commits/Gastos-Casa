@@ -3,8 +3,8 @@
 
   "provedorPadrao": "mock",
 
-  "_certificados": "Descomente para usar o e-CAC. A senha NUNCA fica aqui: vem da variável de ambiente nomeada em senhaVariavel. O .pfx fica fora do repositório.",
-  "certificados": { "pastaPadrao": "~/Certificados" },
+  "_certificados": "A senha NUNCA fica aqui: vem da variável de ambiente nomeada em senhaVariavel. O .pfx fica FORA do projeto -- '../Certificados' é a pasta irmã, dentro da pasta do escritório. Caminho relativo se resolve a partir da pasta do programa.",
+  "certificados": { "pastaPadrao": "../Certificados" },
 
   "provedores": {
     "rfb_pgfn": "mock",

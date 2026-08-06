@@ -72,6 +72,30 @@ arquivo e executa processo, foi construído desconfiado:
 | **Certificado digital A1 (`.pfx`)** | **pasta sua, fora do projeto** | quem tem o arquivo e a senha assume a identidade fiscal do cliente |
 | **Senha do certificado** | `.env`, ignorado pelo Git | separada do `.pfx`: um vazamento sozinho não assina nada |
 
+### Onde fica cada coisa no disco
+
+O programa e os certificados moram na mesma pasta do escritório, mas em
+compartimentos separados — lado a lado, nunca um dentro do outro:
+
+```
+~/ABCinc-EMBRALOT/           a pasta do escritório
+├── cnd-monitor/             o programa
+│   ├── clientes.json        cadastro (ignorado pelo Git)
+│   ├── .env                 senhas    (ignorado pelo Git)
+│   └── relatorios/          saídas    (ignorado pelo Git)
+└── Certificados/            os .pfx   — FORA do projeto
+```
+
+O padrão de fábrica é `../Certificados`, que é exatamente essa pasta irmã.
+Caminho relativo se resolve a partir da pasta do programa, não de onde você
+chamou o comando — a mesma configuração funciona vindo de qualquer terminal.
+
+`src/certificados.js` **recusa** um certificado que esteja dentro de
+`cnd-monitor/`, e o painel avisa em vermelho assim que você digita uma pasta
+proibida. Não é preciosismo: um `.pfx` commitado continua no histórico do Git
+mesmo depois de apagado, e qualquer pessoa com acesso ao repositório — hoje ou
+daqui a cinco anos — pode assinar como aquele cliente.
+
 ### O certificado e a senha
 
 O painel, na aba **Certificados**, guarda apenas duas coisas no cadastro: o
@@ -88,13 +112,8 @@ O painel lista exatamente quais variáveis ainda faltam e oferece as linhas
 prontas para colar. O arquivo é ajustado para `0600` — legível só pelo seu
 usuário — a cada inicialização.
 
-Sobre o A1: um `.pfx` commitado continua no histórico do Git mesmo depois de
-apagado, e qualquer pessoa com acesso ao repositório — hoje ou daqui a cinco
-anos — pode assinar como aquele cliente. Por isso `src/certificados.js` **recusa**
-um certificado que esteja dentro da pasta do projeto, em vez de apenas avisar.
-
-Se um dia este repositório for para o GitHub, ele precisa ser **privado**: o
-`clientes.json` tem CNPJ e CPF de terceiros.
+Se um dia este projeto for para o GitHub, o repositório precisa ser **privado**:
+o `clientes.json` tem CNPJ e CPF de terceiros.
 
 ## Comparação mês a mês
 
@@ -140,7 +159,7 @@ escritório), o provedor `ecac` alcança o que nenhum portal público entrega:
 
 ```json
 {
-  "certificados": { "pastaPadrao": "~/Certificados" },
+  "certificados": { "pastaPadrao": "../Certificados" },
   "provedores": { "cadin_federal": "ecac", "situacao_fiscal": "ecac" },
   "clientes": [
     {

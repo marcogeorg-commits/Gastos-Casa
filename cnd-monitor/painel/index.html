@@ -439,11 +439,15 @@ function renderCertificados() {
           <input type="text" id="pasta-cert" value="${esc(pasta)}" placeholder="~/Certificados">
         </div>
         <p class="ajuda" style="margin:12px 0 0">
-          ${cert.erro
-            ? `<span style="color:var(--critical)">${esc(cert.erro)}</span>`
-            : cert.pasta
-              ? `${cert.arquivos.length} certificado(s) em <code>${esc(cert.pasta)}</code>`
-              : 'Informe a pasta onde estão os arquivos <code>.pfx</code>. Ela deve ficar fora deste projeto.'}
+          ${cert.dentroDoProjeto
+            ? `<span style="color:var(--critical)"><strong>Esta pasta fica dentro do projeto.</strong>
+               Um <code>.pfx</code> aqui pode acabar no histórico do Git, e de lá não sai mais.
+               Use uma pasta irmã: <code>../Certificados</code>.</span>`
+            : cert.erro
+              ? `<span style="color:var(--critical)">${esc(cert.erro)}</span>`
+              : cert.pasta
+                ? `${cert.arquivos.length} certificado(s) em <code>${esc(cert.pasta)}</code>`
+                : 'Informe a pasta onde estão os arquivos <code>.pfx</code>. Ela deve ficar fora deste projeto — o padrão <code>../Certificados</code> é a pasta irmã.'}
         </p>
       </div>
     </section>

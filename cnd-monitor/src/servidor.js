@@ -24,7 +24,7 @@ import { copyFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/pro
 import { dirname, extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { carregarAmbiente, temSenha } from './ambiente.js';
-import { expandirCaminho } from './certificados.js';
+import { dentroDoProjeto, expandirCaminho } from './certificados.js';
 
 const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PORTA_PADRAO = 8787;
@@ -212,10 +212,15 @@ async function lerJson(caminho) {
  * Devolve so o nome do arquivo -- o painel precisa de uma lista para escolher,
  * nao do caminho completo do disco do operador.
  */
-export async function listarCertificados(pasta) {
-  if (!pasta) return { pasta: null, arquivos: [], erro: null };
+export async function listarCertificados(pasta, raiz = RAIZ) {
+  if (!pasta) return { pasta: null, arquivos: [], erro: null, dentroDoProjeto: false };
 
-  const caminho = expandirCaminho(pasta);
+  const caminho = resolve(raiz, expandirCaminho(pasta));
+
+  // Avisar aqui, no cadastro, e nao so quando a rodada falhar tres semanas
+  // depois: o operador acabou de escolher a pasta e ainda pode mudar de ideia.
+  const proibida = dentroDoProjeto(caminho, raiz);
+
   try {
     const entradas = await readdir(caminho, { withFileTypes: true });
     return {
@@ -225,9 +230,15 @@ export async function listarCertificados(pasta) {
         .map((e) => e.name)
         .sort((a, b) => a.localeCompare(b, 'pt-BR')),
       erro: null,
+      dentroDoProjeto: proibida,
     };
   } catch {
-    return { pasta: caminho, arquivos: [], erro: `Pasta não encontrada: ${caminho}` };
+    return {
+      pasta: caminho,
+      arquivos: [],
+      erro: `Pasta não encontrada: ${caminho}`,
+      dentroDoProjeto: proibida,
+    };
   }
 }
 
@@ -242,7 +253,7 @@ async function montarEstado(raiz) {
     ? await lerJson(resolve(raiz, `historico/${competencias[0].competencia}.json`))
     : null;
 
-  const certificados = await listarCertificados(config.certificados?.pastaPadrao);
+  const certificados = await listarCertificados(config.certificados?.pastaPadrao, raiz);
 
   // Só o "tem ou não tem": a senha em si não sobe para o navegador.
   const senhas = {};

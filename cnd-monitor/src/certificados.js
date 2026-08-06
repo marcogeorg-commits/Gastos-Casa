@@ -52,7 +52,10 @@ export async function resolverCertificado(cliente, config = {}, env = process.en
     };
   }
 
-  const pasta = expandirCaminho(config.certificados?.pastaPadrao ?? '.');
+  // Caminho relativo (`../Certificados`) se resolve a partir da pasta do
+  // projeto, nao do diretorio de onde o comando foi chamado: senao a mesma
+  // configuracao acharia o certificado rodando de um lugar e nao de outro.
+  const pasta = resolve(RAIZ_PROJETO, expandirCaminho(config.certificados?.pastaPadrao ?? '.'));
   const bruto = expandirCaminho(declarado.arquivo ?? '');
   if (!bruto) return { erro: `${cliente.nome}: certificado sem "arquivo".` };
 
@@ -60,7 +63,11 @@ export async function resolverCertificado(cliente, config = {}, env = process.en
 
   if (dentroDoProjeto(caminho)) {
     return {
-      erro: `${cliente.nome}: o certificado está dentro do projeto (${caminho}). Um .pfx commitado permanece no histórico do Git mesmo depois de apagado — guarde-o fora do repositório.`,
+      erro:
+        `${cliente.nome}: o certificado está dentro do projeto (${caminho}). Um .pfx commitado ` +
+        'permanece no histórico do Git mesmo depois de apagado. Guarde-o ao lado do projeto, ' +
+        'não dentro: uma pasta "Certificados" irmã da pasta do programa, configurada como ' +
+        '"../Certificados".',
     };
   }
 

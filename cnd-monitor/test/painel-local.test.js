@@ -233,6 +233,39 @@ test('pasta de certificados inexistente vira aviso, não exceção', async () =>
   assert.match(erro, /não encontrada/i);
 });
 
+test('pasta irmã "../Certificados" é aceita; dentro do projeto é sinalizada', async () => {
+  const escritorio = await mkdtemp(join(tmpdir(), 'escritorio-'));
+  const projeto = join(escritorio, 'cnd-monitor');
+  const guardados = join(escritorio, 'Certificados');
+  await mkdir(projeto, { recursive: true });
+  await mkdir(guardados, { recursive: true });
+  await writeFile(join(guardados, 'alfa.pfx'), 'x');
+
+  // A pasta irmã: caminho relativo resolvido a partir do projeto, não do cwd.
+  const irma = await listarCertificados('../Certificados', projeto);
+  assert.equal(irma.dentroDoProjeto, false);
+  assert.deepEqual(irma.arquivos, ['alfa.pfx']);
+
+  // A mesma escolha feita errado, um nível abaixo.
+  await mkdir(join(projeto, 'Certificados'), { recursive: true });
+  const dentro = await listarCertificados('./Certificados', projeto);
+  assert.equal(dentro.dentroDoProjeto, true);
+});
+
+test('o certificado dentro do projeto continua sendo recusado na hora da rodada', async () => {
+  const { resolverCertificado } = await import('../src/certificados.js');
+
+  const recusa = await resolverCertificado(
+    { nome: 'Alfa', certificado: { arquivo: 'alfa.pfx', senhaVariavel: 'CERT_ALFA' } },
+    { certificados: { pastaPadrao: './calibracao' } },
+    { CERT_ALFA: 'x' },
+  );
+
+  assert.match(recusa.erro, /dentro do projeto/);
+  // A mensagem precisa dizer para onde ir, não só que está errado.
+  assert.match(recusa.erro, /\.\.\/Certificados/);
+});
+
 // --- Identidade ------------------------------------------------------------
 
 test('o relatório e o painel usam a mesma folha de estilo', async () => {
