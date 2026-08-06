@@ -160,7 +160,7 @@ const descrever = (s) => SITUACOES[s] ?? SITUACOES.erro;
 // ---------------------------------------------------------------------------
 // Estado e transporte
 // ---------------------------------------------------------------------------
-const estado = { config: null, competencias: [], atual: null, certificados: null, senhas: {}, locais: {}, vinculos: {} };
+const estado = { config: null, competencias: [], atual: null, certificados: null, senhas: {}, locais: {}, vinculos: {}, senhasPorDocumento: {} };
 let sondagem = null;
 
 const esc = (v) => String(v ?? '')
@@ -275,6 +275,8 @@ function renderAvulsa() {
   const precisaMunicipio = escolhidas.includes('municipal') && tipo === 'cnpj';
   const cert = valido ? (avulsa.certificado || certificadoDe(avulsa.documento)) : null;
   const disponiveis = estado.certificados?.arquivos ?? [];
+  // Senha já validada na aba Certificados: não há por que pedir de novo.
+  const senhaPronta = Boolean(estado.senhasPorDocumento?.[limpar(avulsa.documento)]);
   const querCertificado = escolhidas.some((id) => SO_COM_CERTIFICADO.includes(id));
 
   alvo.innerHTML = `
@@ -308,7 +310,12 @@ function renderAvulsa() {
 
         ${querCertificado && valido ? `
         <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--linha)">
-          ${disponiveis.length === 0 ? `
+          ${senhaPronta && cert ? `
+            <p class="ajuda" style="margin:0">
+              <span class="selo selo--good"><span class="selo__icone">●</span>Certificado pronto</span>
+              — <code>${esc(cert)}</code>, com a senha já validada. Nada a fazer aqui.
+            </p>
+          ` : disponiveis.length === 0 ? `
             <p class="ajuda" style="margin:0">
               CADIN e Situação Fiscal exigem certificado digital, e não há nenhum
               <code>.pfx</code> na pasta configurada. Veja a aba <strong>Certificados</strong>.
@@ -567,26 +574,41 @@ function secaoIdentificados(lidos) {
   const cadastrados = new Set((estado.config?.clientes ?? []).map((c) => limpar(c.documento)));
   const novos = ok.filter((l) => !cadastrados.has(l.documento));
 
+  const hoje = new Date().toISOString().slice(0, 10);
+
+  const estadoDe = (l) => {
+    if (!l.documento) {
+      return `<span class="selo selo--warning"><span class="selo__icone">▲</span>${esc(l.erro ?? 'não lido')}</span>`;
+    }
+    if (l.validoAte && l.validoAte < hoje) {
+      return '<span class="selo selo--critical"><span class="selo__icone">■</span>vencido</span>';
+    }
+    return '<span class="selo selo--good"><span class="selo__icone">●</span>pronto</span>';
+  };
+
   const linha = (l) => `
     <tr>
-      <td>${esc(l.arquivo)}</td>
-      <td>${l.documento ? esc(l.nome ?? '—') : `<span class="selo selo--warning">
-          <span class="selo__icone">▲</span>${esc(l.erro ?? 'não lido')}</span>`}</td>
+      <td>${estadoDe(l)}</td>
+      <td>${esc(l.nome ?? '—')}<span class="doc">${esc(l.arquivo)}</span></td>
       <td class="num">${l.documento ? esc(formatar(l.documento)) : '—'}</td>
       <td class="num">${l.validoAte ? esc(l.validoAte.split('-').reverse().join('/')) : '—'}</td>
     </tr>`;
 
+  // Vencido não some da lista: o operador precisa saber que precisa renovar.
+  const vencidos = ok.filter((l) => l.validoAte && l.validoAte < hoje).length;
+
   return `
     <div class="rolagem" style="margin-top:18px">
       <table>
-        <thead><tr><th>Arquivo</th><th>Titular</th><th>Documento</th><th>Vence</th></tr></thead>
+        <thead><tr><th></th><th>Titular</th><th>Documento</th><th>Vence</th></tr></thead>
         <tbody>${lidos.map(linha).join('')}</tbody>
       </table>
     </div>
     <div class="acoes">
-      <span class="doc">${ok.length} de ${lidos.length} identificados${
-        novos.length ? ` · ${novos.length} ainda fora do cadastro` : ' · todos já cadastrados'
-      }</span>
+      <span class="doc">
+        ${ok.length} de ${lidos.length} identificados${vencidos ? ` · ${vencidos} vencido(s)` : ''}
+        ${novos.length ? ` · ${novos.length} ainda fora do cadastro` : ok.length ? ' · todos já cadastrados' : ''}
+      </span>
       <span class="empurra"></span>
       ${novos.length
         ? `<button class="principal" id="imp-cadastrar">Cadastrar ${novos.length} cliente(s)</button>`
@@ -698,10 +720,11 @@ function renderCertificados() {
       <h2>Identificar os certificados</h2>
       <div class="cartao cartao--ar">
         <p class="ajuda">
-          O certificado digital carrega o <strong>CNPJ e a razão social</strong> do titular
-          por dentro (padrão ICP-Brasil). Informe a senha e o programa lê de cada arquivo
-          quem é o dono, sem você precisar digitar nada — e já monta o cadastro.
-          A senha é usada só para ler; não fica gravada.
+          O certificado carrega o <strong>CNPJ e a razão social</strong> do titular por
+          dentro (padrão ICP-Brasil). Informe a senha: o programa <strong>abre cada
+          arquivo para validá-la</strong>, mostra de quem é, e guarda a senha validada no
+          <code>.env</code>. Feito isso, nem a consulta rápida nem a rodada mensal
+          perguntam senha de novo.
         </p>
 
         <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
@@ -763,8 +786,8 @@ function relerCertificados() {
 
     estado.certificados = dados.certificados;
     estado.senhas = dados.senhas ?? {};
-  estado.locais = dados.locais ?? {};
-  estado.vinculos = dados.vinculos ?? {};
+    estado.vinculos = dados.vinculos ?? {};
+    estado.senhasPorDocumento = dados.senhasPorDocumento ?? {};
 
     const campo = document.getElementById('pasta-cert');
     const focado = document.activeElement === campo;
@@ -1180,6 +1203,8 @@ async function carregar() {
   estado.certificados = dados.certificados;
   estado.senhas = dados.senhas ?? {};
   estado.locais = dados.locais ?? {};
+  estado.vinculos = dados.vinculos ?? {};
+  estado.senhasPorDocumento = dados.senhasPorDocumento ?? {};
 
   const seletor = document.getElementById('provedor');
   seletor.innerHTML = Object.entries(PROVEDORES)

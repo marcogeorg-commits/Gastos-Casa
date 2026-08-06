@@ -24,7 +24,7 @@ import { copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { dirname, extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chamadoDireto } from './executavel.js';
-import { carregarAmbiente, temSenha } from './ambiente.js';
+import { carregarAmbiente, gravarSenha, temSenha } from './ambiente.js';
 import { listarCertificados } from './certificados.js';
 import { escolherCertificado, gravarVinculo, lerVinculos } from './vinculos.js';
 import { lerCertificado, temOpenssl } from './certificado-info.js';
@@ -280,6 +280,14 @@ async function montarEstado(raiz) {
     if (variavel) senhas[variavel] = temSenha(variavel);
   }
 
+  // Por documento tambem: a consulta avulsa nao passa pelo cadastro e precisa
+  // saber se ja pode consultar sem pedir senha de novo.
+  const vinculos = await lerVinculos(raiz);
+  const senhasPorDocumento = {};
+  for (const documento of Object.keys(vinculos)) {
+    senhasPorDocumento[documento] = temSenha(`CERT_${documento}`);
+  }
+
   // Caminhos absolutos, para o operador saber onde as coisas estao sem ter
   // que deduzir de "../Certificados". Foi pedido explicitamente, e com razao:
   // um programa que le certificado e grava cadastro precisa dizer onde.
@@ -294,7 +302,8 @@ async function montarEstado(raiz) {
 
   return {
     config, competencias, atual, certificados, senhas, locais,
-    vinculos: await lerVinculos(raiz),
+    vinculos,
+    senhasPorDocumento,
   };
 }
 
@@ -483,8 +492,15 @@ async function tratarApi(req, res, rota, raiz, porta) {
       const info = await lerCertificado(resolve(pasta, arquivo), senha);
       lidos.push({ arquivo, ...info });
 
-      // Ler ja e prova de quem e o dono: o vinculo fica gravado sozinho.
-      if (info.documento) await gravarVinculo(info.documento, arquivo, raiz);
+      if (info.documento) {
+        // Ler e prova de quem e o dono: o vinculo fica gravado sozinho.
+        await gravarVinculo(info.documento, arquivo, raiz);
+
+        // A senha acabou de abrir o certificado, entao e a correta. Guardar
+        // aqui e o que faz a consulta parar de pedi-la de novo, em outro
+        // lugar, com outro nome -- que era a confusao.
+        if (corpo.guardarSenha !== false) gravarSenha(`CERT_${info.documento}`, senha, raiz);
+      }
     }
 
     responderJson(res, 200, { pasta, lidos });

@@ -617,3 +617,52 @@ test('o vínculo guarda o arquivo, nunca a senha', async () => {
   assert.deepEqual(await lerVinculos(raiz), { 56049783000152: 'TOCA DA ONCA 2026.pfx' });
   assert.doesNotMatch(gravado, /senha/i);
 });
+
+// --- Senha guardada depois de validada ------------------------------------
+
+test('a senha só é guardada depois de abrir o certificado de verdade', async () => {
+  const { gravarSenha, analisar } = await import('../src/ambiente.js');
+  const { readFile } = await import('node:fs/promises');
+  const raiz = await mkdtemp(join(tmpdir(), 'env-'));
+
+  gravarSenha('CERT_11222333000181', 'senha-um', raiz);
+  gravarSenha('CERT_22333444000181', 'senha-dois', raiz);
+
+  const conteudo = await readFile(join(raiz, '.env'), 'utf8');
+  assert.deepEqual(analisar(conteudo), {
+    CERT_11222333000181: 'senha-um',
+    CERT_22333444000181: 'senha-dois',
+  });
+});
+
+test('guardar de novo substitui a linha, não empilha duplicatas', async () => {
+  const { gravarSenha, analisar } = await import('../src/ambiente.js');
+  const { readFile } = await import('node:fs/promises');
+  const raiz = await mkdtemp(join(tmpdir(), 'env-'));
+
+  gravarSenha('CERT_X', 'antiga', raiz);
+  gravarSenha('CERT_Y', 'outra', raiz);
+  gravarSenha('CERT_X', 'renovada', raiz);
+
+  const conteudo = await readFile(join(raiz, '.env'), 'utf8');
+  // Duas linhas para a mesma variável se sobrescrevem em silêncio na leitura:
+  // a senha certa poderia ficar escondida atrás da errada.
+  assert.equal(conteudo.split('\n').filter((l) => l.startsWith('CERT_X=')).length, 1);
+  assert.equal(analisar(conteudo).CERT_X, 'renovada');
+  assert.doesNotMatch(conteudo, /\n\n/, 'sem linhas em branco acumuladas');
+});
+
+test('o .env nasce legível só pelo dono', async (t) => {
+  if (process.platform === 'win32') return t.skip('permissões POSIX');
+
+  const { gravarSenha } = await import('../src/ambiente.js');
+  const { stat } = await import('node:fs/promises');
+  const raiz = await mkdtemp(join(tmpdir(), 'env-'));
+
+  gravarSenha('CERT_A', 'segredo', raiz);
+  const modo = (await stat(join(raiz, '.env'))).mode & 0o777;
+
+  // Criar aberto e corrigir depois deixaria uma janela, curta mas real, com a
+  // senha do cliente legível para os outros usuários da máquina.
+  assert.equal(modo & 0o077, 0, `permissões ${modo.toString(8)}`);
+});
