@@ -23,6 +23,7 @@ import { randomUUID } from 'node:crypto';
 import { copyFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { dirname, extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { chamadoDireto } from './executavel.js';
 import { carregarAmbiente, temSenha } from './ambiente.js';
 import { dentroDoProjeto, expandirCaminho } from './certificados.js';
 
@@ -384,7 +385,7 @@ export function criarServidor(raiz = RAIZ, porta = PORTA_PADRAO) {
   });
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (chamadoDireto(import.meta.url)) {
   carregarAmbiente();
 
   const porta = Number(process.env.PORTA ?? PORTA_PADRAO);

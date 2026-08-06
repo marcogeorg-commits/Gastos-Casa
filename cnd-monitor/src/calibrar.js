@@ -22,6 +22,7 @@ import { detectarCaptcha, esperarSeletor } from './provedores/web.js';
 import { abrirContexto, autenticado } from './provedores/ecac.js';
 import { carregarConfig } from './config.js';
 import { resolverCertificado } from './certificados.js';
+import { chamadoDireto } from './executavel.js';
 
 const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -281,7 +282,7 @@ export async function calibrar(idCertidao, opcoes = {}) {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (chamadoDireto(import.meta.url)) {
   const argv = process.argv.slice(2);
   const idCertidao = argv.find((a) => !a.startsWith('--'));
   const headed = argv.includes('--headed');

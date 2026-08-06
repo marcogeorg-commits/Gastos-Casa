@@ -2,6 +2,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { chamadoDireto } from './executavel.js';
 import { carregarAmbiente } from './ambiente.js';
 import { carregarConfig, credenciaisDoAmbiente } from './config.js';
 import { descreverSituacao } from './catalogo.js';
@@ -157,7 +158,7 @@ cnd-monitor — consulta mensal de certidões da carteira de clientes
   return 0;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (chamadoDireto(import.meta.url)) {
   principal().then(
     (codigo) => process.exit(codigo),
     (erro) => {

@@ -285,3 +285,31 @@ test('havendo logotipo, ele entra embutido — o relatório viaja sozinho', () =
   assert.match(html, /<img class="marca__logo" src="data:image\/svg\+xml;base64,QQ=="/);
   assert.match(html, /alt="ABC.inc &amp; EMBRALOT"/);
 });
+
+// --- Ponto de entrada ------------------------------------------------------
+
+test('o CLI reconhece que foi chamado direto mesmo com espaço no caminho', async () => {
+  const { chamadoDireto } = await import('../src/executavel.js');
+  const { pathToFileURL } = await import('node:url');
+
+  // O caminho real do escritório: espaço e apóstrofo, os dois percent-encoded
+  // em import.meta.url e crus em process.argv[1].
+  const caminho = "/Users/marco/LG IA's/Projetos Claude/CND/cnd-monitor/src/index.js";
+  const url = pathToFileURL(caminho).href;
+
+  assert.match(url, /%20/, 'o espaço precisa estar codificado para o teste valer');
+  assert.equal(chamadoDireto(url, ['node', caminho]), true);
+
+  // A comparação ingênua que havia antes — deixada aqui como lembrete de que
+  // ela passa no caminho simples e falha em silêncio no caminho com espaço.
+  assert.notEqual(url, `file://${caminho}`);
+});
+
+test('importado por um teste, o CLI não se executa sozinho', async () => {
+  const { chamadoDireto } = await import('../src/executavel.js');
+  const { pathToFileURL } = await import('node:url');
+
+  const modulo = pathToFileURL('/projeto/src/servidor.js').href;
+  assert.equal(chamadoDireto(modulo, ['node', '/projeto/test/roda.test.js']), false);
+  assert.equal(chamadoDireto(modulo, ['node']), false);
+});

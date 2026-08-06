@@ -78,17 +78,22 @@ O programa e os certificados moram na mesma pasta do escritório, mas em
 compartimentos separados — lado a lado, nunca um dentro do outro:
 
 ```
-~/ABCinc-EMBRALOT/           a pasta do escritório
+CND/                         a pasta do escritório
 ├── cnd-monitor/             o programa
-│   ├── clientes.json        cadastro (ignorado pelo Git)
-│   ├── .env                 senhas    (ignorado pelo Git)
-│   └── relatorios/          saídas    (ignorado pelo Git)
-└── Certificados/            os .pfx   — FORA do projeto
+│   ├── clientes.json        cadastro (fora do versionamento)
+│   ├── .env                 senhas   (fora do versionamento)
+│   └── relatorios/          saídas   (fora do versionamento)
+└── Certificados/            os .pfx  — FORA do projeto
 ```
 
 O padrão de fábrica é `../Certificados`, que é exatamente essa pasta irmã.
 Caminho relativo se resolve a partir da pasta do programa, não de onde você
 chamou o comando — a mesma configuração funciona vindo de qualquer terminal.
+
+Espaço e apóstrofo no caminho funcionam — `/Users/…/LG IA's/Projetos Claude/CND`
+é um caso testado. Isso não era verdade até a versão que introduziu
+`src/executavel.js`: os três comandos (`start`, `consultar`, `calibrar`)
+terminavam em silêncio, com código 0, num caminho com espaço.
 
 `src/certificados.js` **recusa** um certificado que esteja dentro de
 `cnd-monitor/`, e o painel avisa em vermelho assim que você digita uma pasta
