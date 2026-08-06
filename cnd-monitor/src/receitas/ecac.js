@@ -13,10 +13,47 @@
 
 export const LOGIN_ECAC = 'https://cav.receita.fazenda.gov.br/autenticacao/login';
 
-/** Origem para a qual o certificado do cliente deve ser apresentado. */
+/**
+ * Origens que pedem o certificado do cliente.
+ *
+ * O handshake TLS nao acontece no e-CAC: acontece no SSO do gov.br, para onde
+ * o e-CAC redireciona. Declarar so `cav.receita.fazenda.gov.br` deixava o
+ * certificado sem uso -- ninguem o pedia naquele dominio.
+ */
 export const ORIGENS_CERTIFICADO = [
   'https://cav.receita.fazenda.gov.br',
   'https://certificado.sso.acesso.gov.br',
+  'https://sso.acesso.gov.br',
+];
+
+/**
+ * Caminho ate a tela autenticada.
+ *
+ * A pagina de entrada do e-CAC nao oferece certificado: oferece "Entrar com
+ * gov.br". O certificado so aparece como opcao dentro do SSO, um passo
+ * adiante. Era esse passo que faltava -- a rotina parava na porta e seguia
+ * como se tivesse entrado.
+ */
+export const PASSOS_LOGIN = [
+  {
+    nome: 'Entrar com gov.br',
+    candidatos: [
+      'a:has-text("Entrar com")',
+      'button:has-text("Entrar com")',
+      'img[alt*="gov.br" i]',
+      'a[href*="sso.acesso.gov.br" i]',
+    ],
+  },
+  {
+    nome: 'Certificado digital',
+    candidatos: [
+      'button:has-text("Seu certificado digital")',
+      'a:has-text("Seu certificado digital")',
+      'button:has-text("Certificado digital")',
+      'a:has-text("Certificado digital")',
+      '[id*="certificado" i][role="button"]',
+    ],
+  },
 ];
 
 /**

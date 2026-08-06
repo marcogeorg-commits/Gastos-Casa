@@ -107,7 +107,14 @@ export async function resolverCertificado(cliente, config = {}, env = process.en
 
   const senha = env[variavel];
   if (!senha) {
-    return { erro: `${cliente.nome}: a variável ${variavel} não está definida no ambiente.` };
+    // O nome da variavel nao diz nada para quem opera o painel. O que resolve
+    // e a instrucao: validar a senha daquele certificado na aba Certificados.
+    return {
+      erro:
+        `${cliente.nome}: a senha deste certificado ainda não foi validada. ` +
+        'Abra a aba Certificados, informe a senha e clique em ler — o programa ' +
+        'valida, guarda, e esta consulta passa a funcionar sozinha.',
+    };
   }
 
   return { caminho, senha, variavel };

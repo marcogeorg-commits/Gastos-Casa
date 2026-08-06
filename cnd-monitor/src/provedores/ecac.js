@@ -15,7 +15,7 @@
 
 import { resolverCertificado } from '../certificados.js';
 import { interpretarTexto } from '../situacao.js';
-import { LOGIN_ECAC, ORIGENS_CERTIFICADO, RECEITAS_ECAC } from '../receitas/ecac.js';
+import { LOGIN_ECAC, ORIGENS_CERTIFICADO, PASSOS_LOGIN, RECEITAS_ECAC } from '../receitas/ecac.js';
 import { esperarSeletor, primeiroSeletorPresente, primeiroVisivel } from './web.js';
 
 export const id = 'ecac';
@@ -119,6 +119,33 @@ export async function autenticado(pagina) {
  * a lista de links em maos, o ajuste e imediato -- e ela vai para o log, que o
  * operador ve no painel.
  */
+/**
+ * Percorre o caminho ate a tela autenticada.
+ *
+ * O e-CAC nao aceita certificado na propria pagina: manda para o SSO do
+ * gov.br, e e la que o certificado e oferecido. Cada passo e opcional -- se a
+ * sessao ja estiver aberta, ou se o portal pular uma etapa, o passo
+ * simplesmente nao encontra o que clicar e a rotina segue.
+ */
+export async function entrar(pagina, registrar = () => {}) {
+  for (const passo of PASSOS_LOGIN) {
+    if (await autenticado(pagina)) return true;
+
+    const alvo = await primeiroVisivel(pagina, passo.candidatos);
+    if (!alvo) {
+      registrar(`      e-CAC: "${passo.nome}" nao esta nesta tela -- seguindo.`);
+      continue;
+    }
+
+    registrar(`      e-CAC: ${passo.nome}`);
+    await alvo.click({ timeout: 15_000 }).catch(() => {});
+    // O handshake do certificado acontece aqui, no redirecionamento.
+    await pagina.waitForLoadState('networkidle').catch(() => {});
+  }
+
+  return autenticado(pagina);
+}
+
 export async function diagnosticar(pagina, limite = 40) {
   const links = await pagina
     .evaluate(
@@ -176,7 +203,8 @@ export async function consultar({ cliente, idCertidao, config = {}, env = proces
     await pagina.goto(LOGIN_ECAC, { waitUntil: 'domcontentloaded' });
     await pagina.waitForLoadState('networkidle').catch(() => {});
 
-    if (!(await autenticado(pagina))) {
+    const entrou = await entrar(pagina, (m) => console.error(m));
+    if (!entrou) {
       const onde = await diagnosticar(pagina, 12);
       console.error(`      e-CAC: sessão não abriu. Tela: ${onde.titulo} — ${onde.url}`);
       console.error(`      Links visíveis: ${onde.links.join(' | ') || '(nenhum)'}`);

@@ -57,6 +57,10 @@ function motivoLegivel(detalhe) {
       'O sistema do órgão respondeu que não conseguiu concluir agora. Não é informação sobre o cliente.'],
     [/data de nascimento/i,
       'Falta a data de nascimento no cadastro deste cliente.'],
+    [/senha deste certificado ainda não foi validada/i,
+      'Falta validar a senha do certificado digital deste cliente no painel.'],
+    [/sessão do e-CAC não abriu/i,
+      'O e-CAC não abriu a sessão com este certificado — verifique validade, senha e procuração.'],
     [/não trouxe texto/i,
       'O portal respondeu sem conteúdo reconhecível.'],
   ];

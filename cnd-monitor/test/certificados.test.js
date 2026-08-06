@@ -69,7 +69,10 @@ test('exige que a variável de ambiente exista', async () => {
     config,
     {},
   );
-  assert.match(semValor.erro, /CERT_ALFA não está definida/);
+  // A mensagem tem de dizer o que fazer, não o nome interno da variável: quem
+  // opera o painel nunca ouviu falar de CERT_ALFA.
+  assert.match(semValor.erro, /senha deste certificado ainda não foi validada/);
+  assert.match(semValor.erro, /aba Certificados/);
 });
 
 test('avisa quando o arquivo não existe, dizendo onde procurou', async () => {
