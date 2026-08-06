@@ -26,11 +26,15 @@ import { fileURLToPath } from 'node:url';
 import { chamadoDireto } from './executavel.js';
 import { carregarAmbiente, temSenha } from './ambiente.js';
 import { dentroDoProjeto, expandirCaminho } from './certificados.js';
+import { PASTA_CERTIFICADOS_PADRAO, configAvulsa, credenciaisDoAmbiente } from './config.js';
+import { executar } from './executor.js';
+import { descreverSituacao } from './catalogo.js';
 
 const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PORTA_PADRAO = 8787;
 const LIMITE_CORPO = 2 * 1024 * 1024;
 const LIMITE_LINHAS = 500;
+const LIMITE_AVULSA = 120_000;
 
 const TIPOS = {
   '.html': 'text/html; charset=utf-8',
@@ -131,9 +135,9 @@ export function sanearConfig(bruto) {
     provedorPadrao: String(bruto.provedorPadrao ?? 'mock'),
     clientes: (bruto.clientes ?? []).map(cliente),
   };
-  if (bruto.certificados?.pastaPadrao) {
-    saida.certificados = { pastaPadrao: String(bruto.certificados.pastaPadrao).slice(0, 300) };
-  }
+  saida.certificados = {
+    pastaPadrao: String(bruto.certificados?.pastaPadrao || PASTA_CERTIFICADOS_PADRAO).slice(0, 300),
+  };
   if (bruto.provedores && typeof bruto.provedores === 'object') {
     saida.provedores = Object.fromEntries(
       Object.entries(bruto.provedores).map(([k, v]) => [String(k), String(v)]),
@@ -243,9 +247,31 @@ export async function listarCertificados(pasta, raiz = RAIZ) {
   }
 }
 
+/**
+ * Garante que exista um `clientes.json`.
+ *
+ * Sem arquivo, o painel abre vazio e a primeira gravacao o cria sem a pasta de
+ * certificados -- foi assim que uma carteira inteira sumiu de vista depois de
+ * um `git pull` que removeu o arquivo do versionamento. Criar o esqueleto na
+ * subida deixa o painel util desde o primeiro clique.
+ */
+export async function garantirCadastro(raiz = RAIZ) {
+  const destino = resolve(raiz, 'clientes.json');
+  if (await lerJson(destino)) return { criado: false, caminho: destino };
+
+  const esqueleto = {
+    provedorPadrao: 'web',
+    certificados: { pastaPadrao: PASTA_CERTIFICADOS_PADRAO },
+    clientes: [],
+  };
+  await writeFile(destino, `${JSON.stringify(esqueleto, null, 2)}\n`, 'utf8');
+  return { criado: true, caminho: destino };
+}
+
 async function montarEstado(raiz) {
   const config = (await lerJson(resolve(raiz, 'clientes.json'))) ?? {
-    provedorPadrao: 'mock',
+    provedorPadrao: 'web',
+    certificados: { pastaPadrao: PASTA_CERTIFICADOS_PADRAO },
     clientes: [],
   };
   const indice = await lerJson(resolve(raiz, 'historico/index.json'));
@@ -254,7 +280,10 @@ async function montarEstado(raiz) {
     ? await lerJson(resolve(raiz, `historico/${competencias[0].competencia}.json`))
     : null;
 
-  const certificados = await listarCertificados(config.certificados?.pastaPadrao, raiz);
+  const certificados = await listarCertificados(
+    config.certificados?.pastaPadrao ?? PASTA_CERTIFICADOS_PADRAO,
+    raiz,
+  );
 
   // Só o "tem ou não tem": a senha em si não sobe para o navegador.
   const senhas = {};
@@ -334,6 +363,64 @@ async function tratarApi(req, res, rota, raiz, porta) {
     return;
   }
 
+  // Consulta avulsa: um documento, resposta na hora, sem tocar no cadastro
+  // nem no histórico. Roda neste processo mesmo — é uma pergunta curta, e
+  // abrir um processo separado só para ela atrasaria a resposta.
+  if (rota === '/api/avulsa' && req.method === 'POST') {
+    const corpo = await lerCorpo(req);
+
+    let config;
+    try {
+      config = configAvulsa({
+        documento: corpo.documento,
+        certidoes: corpo.certidoes,
+        provedor: corpo.provedor ?? 'web',
+        municipio: corpo.municipio ?? null,
+        dataNascimento: corpo.dataNascimento ?? null,
+        certificados: { pastaPadrao: PASTA_CERTIFICADOS_PADRAO },
+      });
+    } catch (erro) {
+      responderJson(res, 400, { erro: erro.message });
+      return;
+    }
+
+    // Teto de tempo. O provedor "web" insiste no portal (tres tentativas com
+    // 30s de espera), o que faz sentido numa rodada mensal desacompanhada e
+    // nao faz nenhum com alguem esperando na frente da tela.
+    const execucao = await Promise.race([
+      executar(config, credenciaisDoAmbiente(process.env), { concorrencia: 4 }),
+      new Promise((_, falhar) =>
+        setTimeout(
+          () =>
+            falhar(
+              new Error(
+                'A consulta passou de 2 minutos e foi interrompida. Os portais públicos ' +
+                  'costumam estar lentos ou exigindo captcha — tente de novo, ou consulte ' +
+                  'no site do órgão.',
+              ),
+            ),
+          LIMITE_AVULSA,
+        ),
+      ),
+    ]);
+
+    responderJson(res, 200, {
+      documento: config.clientes[0].documentoFormatado,
+      avisos: execucao.avisos,
+      resultados: execucao.resultados.map((r) => ({
+        certidao: r.certidao,
+        certidaoNome: r.certidaoNome,
+        orgao: r.orgao,
+        situacao: r.situacao,
+        rotulo: descreverSituacao(r.situacao).rotulo,
+        detalhe: r.detalhe ?? '',
+        validaAte: r.validaAte ?? null,
+        urlManual: r.urlManual ?? null,
+      })),
+    });
+    return;
+  }
+
   if (rota === '/api/rodada/parar' && req.method === 'POST') {
     rodada.processo?.kill('SIGTERM');
     responderJson(res, 200, { parada: true });
@@ -387,6 +474,7 @@ export function criarServidor(raiz = RAIZ, porta = PORTA_PADRAO) {
 
 if (chamadoDireto(import.meta.url)) {
   carregarAmbiente();
+  await garantirCadastro();
 
   const porta = Number(process.env.PORTA ?? PORTA_PADRAO);
   const endereco = `http://localhost:${porta}/`;

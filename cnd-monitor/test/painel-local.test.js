@@ -313,3 +313,67 @@ test('importado por um teste, o CLI não se executa sozinho', async () => {
   assert.equal(chamadoDireto(modulo, ['node', '/projeto/test/roda.test.js']), false);
   assert.equal(chamadoDireto(modulo, ['node']), false);
 });
+
+// --- Consulta avulsa e recuperação do cadastro -----------------------------
+
+test('a consulta avulsa valida o documento antes de tocar em qualquer portal', async () => {
+  const { configAvulsa } = await import('../src/config.js');
+
+  assert.throws(() => configAvulsa({ documento: 'abc' }), /não parece um CPF nem um CNPJ/);
+  assert.throws(() => configAvulsa({ documento: '11.222.333/0001-99' }), /dígito verificador/);
+});
+
+test('a consulta avulsa só pede as certidões que valem para o tipo de documento', async () => {
+  const { configAvulsa } = await import('../src/config.js');
+
+  // SEFAZ/SC e municipal não se aplicam a CPF.
+  const pf = configAvulsa({ documento: '123.456.780-62', certidoes: ['rfb_pgfn', 'sefaz_sc'] });
+  assert.deepEqual(pf.certidoesAtivas, ['rfb_pgfn']);
+
+  // Municipal sem município vira aviso, não consulta silenciosamente errada.
+  const pj = configAvulsa({ documento: '11.222.333/0001-81', certidoes: ['rfb_pgfn', 'municipal'] });
+  assert.deepEqual(pj.certidoesAtivas, ['rfb_pgfn']);
+  assert.match(pj.avisos.join(' '), /exige o município/);
+});
+
+test('a consulta avulsa não inventa cliente nem mexe no cadastro', async () => {
+  const { configAvulsa } = await import('../src/config.js');
+
+  const config = configAvulsa({ documento: '11.222.333/0001-81', provedor: 'mock' });
+  assert.equal(config.clientes.length, 1);
+  assert.equal(config.clientes[0].documento, '11222333000181');
+  assert.equal(config.clientes[0].certificado, null);
+  assert.equal(config.provedorPadrao, 'mock');
+});
+
+test('o cadastro é recriado quando falta, e preservado quando existe', async () => {
+  const { garantirCadastro } = await import('../src/servidor.js');
+  const raiz = await mkdtemp(join(tmpdir(), 'cadastro-'));
+
+  // Foi exatamente isto que um `git pull` provocou: o arquivo sumiu e o painel
+  // abriu vazio, sem dizer por quê.
+  const primeira = await garantirCadastro(raiz);
+  assert.equal(primeira.criado, true);
+
+  const criado = JSON.parse(await readFile(join(raiz, 'clientes.json'), 'utf8'));
+  assert.deepEqual(criado.clientes, []);
+  assert.equal(criado.certificados.pastaPadrao, '../Certificados');
+
+  // Segunda subida não pode passar por cima da carteira de verdade.
+  await writeFile(
+    join(raiz, 'clientes.json'),
+    JSON.stringify({ clientes: [{ nome: 'Alfa', documento: '11222333000181' }] }),
+  );
+  const segunda = await garantirCadastro(raiz);
+  assert.equal(segunda.criado, false);
+
+  const depois = JSON.parse(await readFile(join(raiz, 'clientes.json'), 'utf8'));
+  assert.equal(depois.clientes[0].nome, 'Alfa');
+});
+
+test('a pasta de certificados sobrevive a uma gravação que não a mencione', () => {
+  // O painel manda o cadastro inteiro; um estado montado sem o campo apagava a
+  // configuração da pasta, e os certificados sumiam da lista.
+  const salvo = sanearConfig({ clientes: [] });
+  assert.equal(salvo.certificados.pastaPadrao, '../Certificados');
+});

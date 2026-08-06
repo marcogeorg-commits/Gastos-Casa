@@ -4,6 +4,9 @@ import { formatar, limpar, tipoDocumento, validar } from './documentos.js';
 
 const PROVEDOR_PADRAO = 'mock';
 
+/** Pasta irma do projeto: junto do programa, fora do repositorio. */
+export const PASTA_CERTIFICADOS_PADRAO = '../Certificados';
+
 /**
  * Le o arquivo de clientes e devolve uma configuracao normalizada.
  * Erros de cadastro sao acumulados em `avisos` em vez de interromper a rotina:
@@ -86,7 +89,81 @@ export async function carregarConfig(caminho) {
     clientes,
     avisos,
     limiteConsultas: bruto.limiteConsultas ?? null,
-    certificados: bruto.certificados ?? {},
+    // A pasta irma e a estrutura recomendada; sem esse padrao, um cadastro que
+    // nunca passou pela aba Certificados procuraria os .pfx dentro do projeto.
+    certificados: { pastaPadrao: PASTA_CERTIFICADOS_PADRAO, ...(bruto.certificados ?? {}) },
+  };
+}
+
+/**
+ * Configuracao de uma consulta avulsa: um documento, sem passar pelo cadastro.
+ *
+ * O uso mais comum do escritorio nao e a rodada mensal: e o telefone tocando
+ * com "da uma olhada no CNPJ tal". Obrigar a cadastrar o cliente antes de
+ * poder consultar transformava um minuto em cinco -- e sujava a carteira com
+ * quem so passou por ali.
+ *
+ * Nao toca em `clientes.json` nem no historico: e uma pergunta, nao um
+ * acompanhamento.
+ */
+export function configAvulsa({
+  documento,
+  certidoes = null,
+  provedor = 'web',
+  municipio = null,
+  dataNascimento = null,
+  certificados = {},
+}) {
+  const limpo = limpar(documento);
+  const tipo = tipoDocumento(limpo);
+
+  if (!tipo) throw new Error(`"${documento}" não parece um CPF nem um CNPJ.`);
+  if (!validar(limpo)) {
+    throw new Error(`${formatar(limpo)} tem dígito verificador inválido — confira a digitação.`);
+  }
+
+  const avisos = [];
+  const pedidas = certidoes?.length ? certidoes : IDS_CERTIDOES;
+
+  const ativas = pedidas.filter((id) => {
+    const meta = CATALOGO[id];
+    if (!meta) {
+      avisos.push(`Certidão desconhecida ignorada: "${id}"`);
+      return false;
+    }
+    if (!meta.aceita.includes(tipo)) return false;
+    if (meta.exigeMunicipio && !municipio) {
+      avisos.push(`"${meta.nome}" exige o município — informe-o para incluí-la.`);
+      return false;
+    }
+    return true;
+  });
+
+  if (ativas.length === 0) {
+    throw new Error(`Nenhuma das certidões escolhidas se aplica a este ${tipo.toUpperCase()}.`);
+  }
+
+  return {
+    provedorPadrao: provedor,
+    provedores: {},
+    certidoesAtivas: ativas,
+    clientes: [
+      {
+        nome: formatar(limpo),
+        documento: limpo,
+        documentoFormatado: formatar(limpo),
+        tipo,
+        municipio,
+        dataNascimento,
+        uf: null,
+        observacao: null,
+        certificado: null,
+        certidoes: ativas,
+      },
+    ],
+    avisos,
+    limiteConsultas: null,
+    certificados,
   };
 }
 

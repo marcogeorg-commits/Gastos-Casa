@@ -40,13 +40,15 @@
   <div id="console" hidden></div>
 
   <div class="abas" role="tablist">
-    <button class="aba" role="tab" data-painel="situacao" aria-selected="true">Situação</button>
+    <button class="aba" role="tab" data-painel="avulsa" aria-selected="true">Consulta rápida</button>
+    <button class="aba" role="tab" data-painel="situacao" aria-selected="false">Situação</button>
     <button class="aba" role="tab" data-painel="clientes" aria-selected="false">Clientes</button>
     <button class="aba" role="tab" data-painel="certificados" aria-selected="false">Certificados</button>
     <button class="aba" role="tab" data-painel="competencias" aria-selected="false">Competências</button>
   </div>
 
-  <section id="painel-situacao"></section>
+  <section id="painel-avulsa"></section>
+  <section id="painel-situacao" hidden></section>
   <section id="painel-clientes" hidden></section>
   <section id="painel-certificados" hidden></section>
   <section id="painel-competencias" hidden></section>
@@ -205,6 +207,111 @@ function gravar({ imediato = false } = {}) {
   // Digitação salva sozinha, mas só depois da pausa: sem isso seria uma
   // gravação por tecla.
   imediato ? enviar() : (gravacaoPendente = setTimeout(enviar, 700));
+}
+
+// ---------------------------------------------------------------------------
+// Aba: consulta rápida — um documento, resposta na hora, sem cadastrar
+// ---------------------------------------------------------------------------
+const avulsa = { documento: '', certidoes: null, municipio: '', rodando: false, saida: null };
+
+function renderAvulsa() {
+  const alvo = document.getElementById('painel-avulsa');
+  const tipo = tipoDocumento(avulsa.documento);
+  const valido = Boolean(tipo) && validar(avulsa.documento);
+  const escolhidas = avulsa.certidoes ?? Object.keys(CERTIDOES);
+
+  const marcadores = Object.entries(CERTIDOES).map(([id, meta]) => {
+    const aplicavel = !tipo || meta.aceita.includes(tipo);
+    return `<span class="marcador" role="button" tabindex="0"
+      aria-pressed="${escolhidas.includes(id)}" data-avulsa-certidao="${id}"
+      style="${aplicavel ? '' : 'opacity:.3;pointer-events:none'}">${esc(meta.nome)}</span>`;
+  }).join('');
+
+  const precisaMunicipio = escolhidas.includes('municipal') && tipo === 'cnpj';
+
+  alvo.innerHTML = `
+    <section>
+      <h2>Consulta rápida</h2>
+      <p class="ajuda">Para quando o telefone toca e você só precisa dar uma olhada num CNPJ.
+        Não cadastra ninguém e não entra no histórico — é uma pergunta, não um acompanhamento.</p>
+
+      <div class="cartao cartao--ar">
+        <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start">
+          <div style="flex:1 1 240px;max-width:320px">
+            <input type="text" id="avulsa-doc" value="${esc(avulsa.documento)}"
+                   placeholder="CNPJ ou CPF" autocomplete="off"
+                   class="${avulsa.documento && !valido ? 'invalido' : ''}">
+            ${avulsa.documento && !valido
+              ? '<span class="erro-campo">documento inválido</span>'
+              : valido ? `<span class="erro-campo" style="color:var(--texto-3)">${esc(formatar(avulsa.documento))}</span>` : ''}
+          </div>
+          ${precisaMunicipio ? `
+          <div style="flex:0 1 200px">
+            <input type="text" id="avulsa-municipio" value="${esc(avulsa.municipio)}" placeholder="Município">
+          </div>` : ''}
+          <button class="principal" id="avulsa-rodar" ${valido && !avulsa.rodando ? '' : 'disabled'}>
+            ${avulsa.rodando ? 'Consultando…' : 'Consultar'}
+          </button>
+        </div>
+
+        <p class="ajuda" style="margin:18px 0 8px">Certidões desta consulta:</p>
+        <div class="marcadores">${marcadores}</div>
+      </div>
+    </section>
+
+    ${avulsa.saida ? secaoResultadoAvulso(avulsa.saida) : ''}`;
+}
+
+function secaoResultadoAvulso(saida) {
+  if (saida.erro) {
+    return `<section><div class="aviso aviso--perigo">
+      <span class="aviso__i">▲</span><span>${esc(saida.erro)}</span></div></section>`;
+  }
+
+  const linhas = saida.resultados.map((r) => `
+    <tr>
+      <th scope="row">${esc(r.certidaoNome)}<span class="doc">${esc(r.orgao)}</span></th>
+      <td>${selo(r.situacao)}</td>
+      <td>${r.validaAte ? `vence ${esc(r.validaAte)}` : '—'}</td>
+      <td class="ajuda" style="margin:0;font-size:13px">${esc(r.detalhe).slice(0, 240)}
+        ${r.urlManual ? `<a href="${esc(r.urlManual)}" target="_blank" rel="noopener">portal</a>` : ''}</td>
+    </tr>`).join('');
+
+  return `
+    <section>
+      <h2>${esc(saida.documento)}</h2>
+      <div class="cartao rolagem">
+        <table>
+          <thead><tr><th>Certidão</th><th>Situação</th><th>Validade</th><th>O que o órgão respondeu</th></tr></thead>
+          <tbody>${linhas}</tbody>
+        </table>
+      </div>
+      ${saida.avisos?.length ? `<div class="cartao" style="margin-top:12px">
+        <ul class="avisos">${saida.avisos.map((a) => `<li>${esc(a)}</li>`).join('')}</ul></div>` : ''}
+    </section>`;
+}
+
+async function rodarAvulsa() {
+  avulsa.rodando = true;
+  avulsa.saida = null;
+  renderAvulsa();
+
+  try {
+    avulsa.saida = await api('/api/avulsa', {
+      method: 'POST',
+      body: JSON.stringify({
+        documento: avulsa.documento,
+        certidoes: avulsa.certidoes,
+        municipio: avulsa.municipio || null,
+        provedor: document.getElementById('provedor').value,
+      }),
+    });
+  } catch (erro) {
+    avulsa.saida = { erro: erro.message };
+  } finally {
+    avulsa.rodando = false;
+    renderAvulsa();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -542,6 +649,7 @@ function renderCompetencias() {
 }
 
 function renderTudo() {
+  renderAvulsa();
   renderSituacao();
   renderClientes();
   renderCertificados();
@@ -615,6 +723,21 @@ async function sondar() {
 document.addEventListener('input', (e) => {
   const alvo = e.target;
 
+  if (alvo.id === 'avulsa-doc') {
+    avulsa.documento = alvo.value;
+    const cursor = alvo.selectionStart;
+    renderAvulsa();
+    const novo = document.getElementById('avulsa-doc');
+    novo?.focus();
+    novo?.setSelectionRange(cursor, cursor);
+    return;
+  }
+
+  if (alvo.id === 'avulsa-municipio') {
+    avulsa.municipio = alvo.value;
+    return;
+  }
+
   if (alvo.id === 'pasta-cert') {
     estado.config.certificados = { pastaPadrao: alvo.value };
     gravar();
@@ -684,6 +807,21 @@ document.addEventListener('change', async (e) => {
 });
 
 document.addEventListener('click', async (e) => {
+  const marcadorAvulso = e.target.closest('[data-avulsa-certidao]');
+  if (marcadorAvulso) {
+    const atuais = new Set(avulsa.certidoes ?? Object.keys(CERTIDOES));
+    const id = marcadorAvulso.dataset.avulsaCertidao;
+    atuais.has(id) ? atuais.delete(id) : atuais.add(id);
+    avulsa.certidoes = [...atuais];
+    renderAvulsa();
+    return;
+  }
+
+  if (e.target.id === 'avulsa-rodar') {
+    await rodarAvulsa();
+    return;
+  }
+
   const marcador = e.target.closest('[data-certidao]');
   if (marcador) {
     const cliente = estado.config.clientes[Number(marcador.dataset.i)];
@@ -728,6 +866,14 @@ document.addEventListener('click', async (e) => {
   }
 
   if (e.target.id === 'rodar') {
+    // Rodar com a carteira vazia gravava um cadastro vazio e falhava logo
+    // depois. O erro chegava do processo filho, sem dizer o que fazer.
+    const ativos = (estado.config.clientes ?? []).filter((c) => c.ativo !== false).length;
+    if (ativos === 0) {
+      avisar('Nenhum cliente ativo na carteira. Use a Consulta rápida, ou cadastre em Clientes.');
+      return;
+    }
+
     const provedor = document.getElementById('provedor').value;
     estado.config.provedorPadrao = provedor;
     try {
