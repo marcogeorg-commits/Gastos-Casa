@@ -73,11 +73,15 @@ test('o modo assistido preenche o documento e espera a pessoa', async (t) => {
   const registrado = [];
 
   const saida = await comPagina(async (pagina) => {
-    // O "humano": resolve o captcha e envia, meio segundo depois.
-    setTimeout(async () => {
+    // O "humano" age quando é chamado, não num prazo fixo. Prazo fixo fazia o
+    // teste depender de a máquina digitar mais rápido que a pessoa -- e o
+    // clique caía no meio da digitação, enviando meio CNPJ.
+    const agirQuandoChamado = async (mensagem) => {
+      registrado.push(mensagem);
+      if (!/captcha/i.test(mensagem)) return;
       await pagina.fill('#idCampoResposta', 'AB12').catch(() => {});
       await pagina.click('#enviar').catch(() => {});
-    }, 500);
+    };
 
     return receita.executarAssistido({
       pagina,
@@ -86,7 +90,7 @@ test('o modo assistido preenche o documento e espera a pessoa', async (t) => {
       primeiroVisivel,
       esperarSeletor,
       esperaHumano: 15_000,
-      registrar: (m) => registrado.push(m),
+      registrar: agirQuandoChamado,
     });
   });
 

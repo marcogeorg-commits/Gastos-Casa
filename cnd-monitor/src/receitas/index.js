@@ -47,6 +47,46 @@ export function extrairValidade(texto) {
  * Runner comum: abre o formulário, informa o documento, envia e lê o resultado.
  * Todo portal de certidão pública segue essa mesma forma.
  */
+/**
+ * Escreve o documento no campo e confere o que ficou lá.
+ *
+ * `fill()` grava o valor de uma vez. Num campo com máscara -- e o do portal da
+ * Receita tem -- a máscara e o Angular não veem a digitação acontecer: o
+ * formulário pode ficar com valor pela metade, ou com os separadores
+ * duplicados, sem que nada na tela denuncie.
+ *
+ * O portal então respondia "Não foi possível concluir a ação para o
+ * contribuinte informado. 023", que a rotina lia como portal fora do ar --
+ * quando o portal estava de pé e o operador emitia a mesma certidão no Chrome,
+ * no mesmo minuto. O problema nunca foi o portal: era o CNPJ que chegava lá.
+ *
+ * Digitar tecla a tecla faz a máscara trabalhar como trabalha para uma pessoa.
+ * E a conferência é o que faltava: comparar os dígitos do que ficou no campo
+ * com os do documento. Sem ela, um envio com valor errado vira "indisponível"
+ * e três tentativas de esperar um portal que não tem problema nenhum.
+ */
+export async function escreverDocumento(pagina, campo, valor, documento) {
+  const so = (t) => String(t ?? '').replace(/\D/g, '');
+
+  const conferir = async () => so(await pagina.inputValue(campo).catch(() => ''));
+
+  await pagina.click(campo).catch(() => {});
+  await pagina.fill(campo, '').catch(() => {});
+  await pagina.locator(campo).pressSequentially(valor, { delay: 25 });
+
+  if ((await conferir()) === so(documento)) return { ok: true };
+
+  // A máscara pode rejeitar os separadores que já vieram prontos. Segunda
+  // tentativa só com dígitos: a própria máscara põe a pontuação.
+  await pagina.fill(campo, '').catch(() => {});
+  await pagina.locator(campo).pressSequentially(so(documento), { delay: 25 });
+
+  const final = await conferir();
+  return final === so(documento)
+    ? { ok: true }
+    : { ok: false, encontrado: final };
+}
+
 export function receitaFormulario(config) {
   const urlsPadrao = config.urls ?? (config.url ? [config.url] : []);
 
@@ -102,9 +142,21 @@ export function receitaFormulario(config) {
         };
       }
 
+      // Antes de digitar: a partir daqui a tela pode mudar por acao da pessoa,
+      // e e essa mudanca que sinaliza a resposta.
+      const baseResultado = await textoDoResultado(pagina, alvoResultado, esperar, config.ruidos);
+
       const valor =
         config.formatoDocumento === 'formatado' ? formatar(cliente.documento) : cliente.documento;
-      await pagina.fill(campo, valor);
+      const escrita = await escreverDocumento(pagina, campo, valor, cliente.documento);
+      if (!escrita.ok) {
+        return {
+          situacao: 'erro',
+          detalhe:
+            `O campo do documento ficou com "${escrita.encontrado}" em vez de ${cliente.documento}. ` +
+            'A máscara do portal não aceitou a digitação.',
+        };
+      }
 
       const nascimento = await esperar(pagina, campoNascimento ?? [], 2000);
       if (nascimento && cliente.dataNascimento) {
@@ -123,6 +175,7 @@ export function receitaFormulario(config) {
         config,
         esperar,
         argumentos.esperaHumano ?? 600_000,
+        baseResultado,
       );
 
       if (!limpo) {
@@ -303,11 +356,16 @@ async function esperarDesfecho(pagina, config, tempoLimite = 45_000, urlInicial 
  * A prova de que algo aconteceu e o texto **mudar** em relacao ao que estava
  * na tela quando a vez passou para a pessoa, e o novo texto ser interpretavel.
  */
-async function esperarRespostaHumana(pagina, config, esperar, tempoLimite) {
+async function esperarRespostaHumana(pagina, config, esperar, tempoLimite, base = null) {
   const alvos = config.seletores.alvoResultado;
   const ler = () => textoDoResultado(pagina, alvos, esperar, config.ruidos);
 
-  const base = await ler();
+  // A linha de base vem de fora quando possivel: tirada ANTES de digitar o
+  // documento. Tirada depois, ela corre com a pessoa -- se a resposta chegar
+  // enquanto a maquina ainda digita, a base ja nasce contendo o desfecho e
+  // nenhuma mudanca aparece depois. A consulta entao volta como "ninguem agiu"
+  // com a certidao na tela.
+  const inicial = base ?? (await ler());
   const limite = Date.now() + tempoLimite;
 
   while (Date.now() < limite) {
@@ -317,7 +375,7 @@ async function esperarRespostaHumana(pagina, config, esperar, tempoLimite) {
     if (pagina.isClosed()) return '';
 
     const agora = await ler().catch(() => '');
-    if (agora && agora !== base && interpretarTexto(agora)) return agora;
+    if (agora && agora !== inicial && interpretarTexto(agora)) return agora;
   }
   return '';
 }
@@ -362,7 +420,15 @@ async function umaTentativa(
 
   const valor =
     config.formatoDocumento === 'formatado' ? formatar(cliente.documento) : cliente.documento;
-  await pagina.fill(campo, valor);
+  const escrita = await escreverDocumento(pagina, campo, valor, cliente.documento);
+  if (!escrita.ok) {
+    return {
+      situacao: 'erro',
+      detalhe:
+        `O campo do documento ficou com "${escrita.encontrado}" em vez de ${cliente.documento}. ` +
+        'A máscara do portal não aceitou a digitação.',
+    };
+  }
 
   // A emissão para pessoa física costuma pedir a data de nascimento. Se o
   // portal pede e o cadastro não tem, é conferência manual — não se chuta.
@@ -445,7 +511,10 @@ export const RECEITAS = {
       cpf: `${PORTAL_RFB}/cpf`,
     },
     urls: [PORTAL_RFB],
-    formatoDocumento: 'formatado',
+    // Digitos puros: e assim que o operador emite a certidao no navegador, e a
+    // mascara do proprio campo poe a pontuacao. Mandar ja formatado fazia a
+    // mascara receber separadores que ela mesma ia inserir.
+    formatoDocumento: 'digitos',
     // Confirmado no portal: a emissão leva a #/home/<tipo>/resultado.
     urlResultado: /#\/home\/(cnpj|cpf|cib|cno)\/resultado/,
     // Só os específicos: `main` e `body` sempre têm texto e encerrariam a
