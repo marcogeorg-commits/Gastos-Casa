@@ -13,3 +13,5 @@ relatorios/ultimo.html
 # podem conter dados fiscais de cliente. Ficam de fora do versionamento; envie
 # manualmente se precisar de ajuda para diagnosticar.
 calibracao/falha-*
+# Calibracao do e-CAC: a captura mostra a tela autenticada de um cliente.
+calibracao/ecac-*

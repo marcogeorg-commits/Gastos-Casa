@@ -194,16 +194,18 @@ function formatar(v) {
 // Catálogo — espelha src/catalogo.js no que o painel precisa exibir.
 // ---------------------------------------------------------------------------
 const CERTIDOES = {
-  rfb_pgfn:      { nome: 'CND Federal',      aceita: ['cnpj', 'cpf'] },
-  cadin_federal: { nome: 'CADIN Federal',    aceita: ['cnpj', 'cpf'] },
-  fgts_crf:      { nome: 'CRF do FGTS',      aceita: ['cnpj', 'cpf'] },
-  cndt:          { nome: 'CNDT Trabalhista', aceita: ['cnpj', 'cpf'] },
-  sefaz_sc:      { nome: 'CND Estadual SC',  aceita: ['cnpj'], },
-  municipal:     { nome: 'CND Municipal',    aceita: ['cnpj'], exigeMunicipio: true },
+  rfb_pgfn:       { nome: 'CND Federal',      aceita: ['cnpj', 'cpf'] },
+  cadin_federal:  { nome: 'CADIN Federal',    aceita: ['cnpj', 'cpf'], exigeCertificado: true },
+  situacao_fiscal:{ nome: 'Situação Fiscal',  aceita: ['cnpj', 'cpf'], exigeCertificado: true },
+  fgts_crf:       { nome: 'CRF do FGTS',      aceita: ['cnpj', 'cpf'] },
+  cndt:           { nome: 'CNDT Trabalhista', aceita: ['cnpj', 'cpf'] },
+  sefaz_sc:       { nome: 'CND Estadual SC',  aceita: ['cnpj'] },
+  municipal:      { nome: 'CND Municipal',    aceita: ['cnpj'], exigeMunicipio: true },
 };
 
 const SITUACOES = {
   negativa:                     { rotulo: 'Negativa',        icone: '✓', status: 'good' },
+  indisponivel:                 { rotulo: 'Indisponível',    icone: '▲', status: 'serious' },
   positiva_com_efeito_negativo: { rotulo: 'Efeito negativa', icone: '✓', status: 'good' },
   sem_registro:                 { rotulo: 'Nada consta',     icone: '✓', status: 'good' },
   positiva:                     { rotulo: 'Débitos',         icone: '✕', status: 'critical' },
@@ -258,6 +260,10 @@ function linhaCliente(cliente, i) {
   const ativas = certidoesDe(cliente);
   const herdado = cliente.certidoes === undefined;
   const faltaMunicipio = ativas.includes('municipal') && !cliente.municipio;
+  // Certidão de e-CAC sem certificado no cadastro vira conferência manual na
+  // rodada; avisar aqui evita descobrir isso só no relatório.
+  const precisaCertificado = ativas.some((id) => CERTIDOES[id]?.exigeCertificado);
+  const temCertificado = Boolean(cliente.certificado?.arquivo);
 
   const marcadores = Object.entries(CERTIDOES)
     .map(([id, meta]) => {
@@ -290,6 +296,15 @@ function linhaCliente(cliente, i) {
       <td class="num"><input type="text" value="${esc(cliente.dataNascimento ?? '')}" data-campo="dataNascimento" data-i="${i}"
              placeholder="${tipo === 'cpf' ? 'dd/mm/aaaa' : '—'}" ${tipo === 'cnpj' ? 'disabled' : ''}></td>
       <td><div class="marcadores">${marcadores}</div></td>
+      <td>
+        ${
+          precisaCertificado
+            ? temCertificado
+              ? `<span class="selo selo--good" title="${esc(cliente.certificado.arquivo)}"><span class="selo__i">✓</span>sim</span>`
+              : '<span class="selo selo--warning"><span class="selo__i">▲</span>falta</span>'
+            : '<span class="selo selo--neutro">–</span>'
+        }
+      </td>
       <td><input type="checkbox" data-campo="ativo" data-i="${i}" ${cliente.ativo === false ? '' : 'checked'}></td>
       <td><button class="icone" data-remover="${i}" title="Remover cliente">✕</button></td>
     </tr>`;
@@ -304,8 +319,9 @@ function renderClientes() {
     <div class="aviso aviso--perigo">
       <span aria-hidden="true">▲</span>
       <span><strong>Este cadastro contém CNPJ e CPF de clientes.</strong>
-      Mantenha o repositório privado. Certificado digital A1 (arquivo <code>.pfx</code> e senha)
-      <strong>não deve ser guardado aqui</strong> — nem no repositório, nem neste painel.</span>
+      Mantenha o repositório privado. O certificado digital A1 (arquivo <code>.pfx</code> e senha)
+      <strong>fica fora do repositório</strong>: o cadastro guarda só o nome do arquivo e o nome da
+      variável de ambiente com a senha.</span>
     </div>
 
     <div class="cartao">
@@ -319,10 +335,10 @@ function renderClientes() {
           <thead><tr>
             <th style="min-width:200px">Nome</th><th style="min-width:150px">Documento</th>
             <th style="min-width:130px">Município</th><th style="min-width:110px">Nascimento</th>
-            <th style="min-width:320px">Certidões</th><th>Ativo</th><th></th>
+            <th style="min-width:320px">Certidões</th><th>Certificado</th><th>Ativo</th><th></th>
           </tr></thead>
           <tbody>${clientes.map(linhaCliente).join('') ||
-            '<tr><td colspan="7" class="vazio">Nenhum cliente. Use “Acrescentar cliente”.</td></tr>'}</tbody>
+            '<tr><td colspan="8" class="vazio">Nenhum cliente. Use “Acrescentar cliente”.</td></tr>'}</tbody>
         </table>
       </div>
 

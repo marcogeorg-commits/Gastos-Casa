@@ -309,14 +309,19 @@ De uma máquina com acesso aos portais (a sua; nem o ambiente do agente nem os
 runners do Actions alcançam esses sites):
 
 ```bash
-git checkout claude/superpowers-k6v3zw
-cd cnd-monitor
+cd ~/Gastos-Casa/cnd-monitor          # os comandos abaixo dependem desta pasta
 npm run preparar-web                  # instala Playwright + Chromium (uma vez)
 
 npm run calibrar -- rfb_pgfn          # lista campos, botões e captcha reais
 npm run calibrar -- rfb_pgfn --tipo cpf   # calibra a rota de pessoa física
 npm run calibrar -- cndt --headed     # abre o navegador para você acompanhar
+
+# e-CAC: entra com o certificado de um cliente e inventaria a tela autenticada
+npm run calibrar -- cadin_federal --cliente "Alfa"
 ```
+
+A calibração do e-CAC salva a captura como `calibracao/ecac-*.png`, **fora do
+versionamento**: ela mostra a tela autenticada de um cliente.
 
 O comando imprime os seletores que existem de fato, diz quais candidatos da
 receita casaram, e salva `calibracao/<certidao>.json` e `.png`.

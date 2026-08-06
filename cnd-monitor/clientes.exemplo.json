@@ -3,18 +3,28 @@
 
   "provedorPadrao": "mock",
 
+  "_certificados": "Descomente para usar o e-CAC. A senha NUNCA fica aqui: vem da variável de ambiente nomeada em senhaVariavel. O .pfx fica fora do repositório.",
+  "certificados": { "pastaPadrao": "~/Certificados" },
+
   "provedores": {
     "rfb_pgfn": "mock",
     "fgts_crf": "mock",
     "cndt": "mock",
     "sefaz_sc": "mock",
-    "municipal": "mock"
+    "municipal": "mock",
+    "situacao_fiscal": "mock"
   },
 
   "certidoes": ["rfb_pgfn", "cadin_federal", "fgts_crf", "cndt", "sefaz_sc", "municipal"],
 
   "clientes": [
-    { "nome": "Alfa Comércio de Alimentos Ltda", "documento": "11.222.333/0001-81", "municipio": "Blumenau", "uf": "SC" },
+    {
+      "nome": "Alfa Comércio de Alimentos Ltda",
+      "documento": "11.222.333/0001-81",
+      "municipio": "Blumenau",
+      "uf": "SC",
+      "certificado": { "arquivo": "alfa.pfx", "senhaVariavel": "CERT_ALFA" }
+    },
     { "nome": "Beta Serviços Contábeis Ltda", "documento": "22.333.444/0001-81", "municipio": "Blumenau", "uf": "SC" },
     { "nome": "Gama Transportes Ltda", "documento": "33.444.555/0001-81", "municipio": "Gaspar", "uf": "SC" },
     { "nome": "Delta Indústria Têxtil S/A", "documento": "44.555.666/0001-81", "municipio": "Brusque", "uf": "SC" },

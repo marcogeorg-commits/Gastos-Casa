@@ -221,3 +221,22 @@ test('cliente sem lista própria mostra as certidões herdadas como ativas', asy
     servidor.close();
   }
 });
+
+/**
+ * O painel repete o catálogo porque é uma página estática, sem etapa de build.
+ * Quando uma certidão nova entra em src/catalogo.js e não entra aqui, ela some
+ * do cadastro sem ninguém notar — foi o que aconteceu com a Situação Fiscal.
+ */
+test('o painel conhece todas as certidões e situações do catálogo', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { CATALOGO, SITUACOES } = await import('../src/catalogo.js');
+
+  const html = await readFile(resolve(RAIZ, 'painel/index.html'), 'utf8');
+
+  for (const id of Object.keys(CATALOGO)) {
+    assert.ok(html.includes(`${id}:`), `certidão "${id}" não aparece no painel`);
+  }
+  for (const id of Object.keys(SITUACOES)) {
+    assert.ok(html.includes(`${id}:`), `situação "${id}" não aparece no painel`);
+  }
+});

@@ -8,6 +8,7 @@
  *   npm run calibrar -- rfb_pgfn
  *   npm run calibrar -- rfb_pgfn --tipo cpf
  *   npm run calibrar -- cndt --headed
+ *   npm run calibrar -- cadin_federal --cliente "Alfa"   # e-CAC, com certificado
  *
  * Precisa rodar de uma máquina com acesso aos portais (o ambiente do agente e
  * os runners do GitHub Actions costumam não ter).
@@ -16,7 +17,11 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { IDS_RECEITAS, RECEITAS } from './receitas/index.js';
+import { IDS_ECAC, LOGIN_ECAC, RECEITAS_ECAC } from './receitas/ecac.js';
 import { detectarCaptcha, esperarSeletor } from './provedores/web.js';
+import { abrirContexto, autenticado } from './provedores/ecac.js';
+import { carregarConfig } from './config.js';
+import { resolverCertificado } from './certificados.js';
 
 const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -99,11 +104,83 @@ export async function inventariar(pagina) {
   });
 }
 
+/**
+ * Calibração do e-CAC: entra com o certificado de um cliente e inventaria a
+ * tela autenticada. Sem entrar, o inventário seria o da página de login — que
+ * não tem relação com o serviço que se quer automatizar.
+ */
+export async function calibrarEcac(idCertidao, opcoes = {}) {
+  const receita = RECEITAS_ECAC[idCertidao];
+  const config = await carregarConfig(resolve(RAIZ, opcoes.clientes ?? 'clientes.json'));
+
+  const cliente = opcoes.cliente
+    ? config.clientes.find((c) => c.nome.toLowerCase().includes(opcoes.cliente.toLowerCase()))
+    : config.clientes.find((c) => c.certificado);
+
+  if (!cliente) {
+    throw new Error(
+      opcoes.cliente
+        ? `Nenhum cliente com nome contendo "${opcoes.cliente}".`
+        : 'Nenhum cliente do cadastro tem certificado configurado.',
+    );
+  }
+
+  const certificado = await resolverCertificado(cliente, config, process.env);
+  if (certificado.erro) throw new Error(certificado.erro);
+
+  const { chromium } = await import('playwright');
+  const navegador = await chromium.launch({
+    headless: !opcoes.headed,
+    ...(process.env.PLAYWRIGHT_EXECUTABLE_PATH
+      ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH }
+      : {}),
+    args: ['--no-sandbox'],
+  });
+
+  try {
+    const contexto = await abrirContexto(navegador, certificado);
+    const pagina = await contexto.newPage();
+    pagina.setDefaultTimeout(60_000);
+
+    console.log(`Cliente: ${cliente.nome} · certificado: ${certificado.caminho}`);
+    process.stdout.write(`Abrindo ${LOGIN_ECAC} ... `);
+    const resposta = await pagina.goto(LOGIN_ECAC, { waitUntil: 'domcontentloaded' });
+    console.log(`HTTP ${resposta?.status() ?? '?'}`);
+
+    await esperarApp(pagina);
+    const entrou = await autenticado(pagina);
+    console.log(entrou ? 'Sessão autenticada.' : 'NÃO autenticou — o inventário abaixo é da tela de login.');
+
+    const inventario = await inventariar(pagina);
+    console.log(`\nTítulo: ${inventario.titulo}`);
+    console.log(`\nLinks de serviço que casam com a receita:`);
+    for (const candidato of receita.caminhoServico) {
+      const achou = (await pagina.locator(candidato).count()) > 0;
+      console.log(`  ${candidato}: ${achou ? 'OK' : 'não encontrado'}`);
+    }
+
+    console.log(`\nTexto visível:\n  ${inventario.textoVisivel}`);
+
+    const pasta = resolve(RAIZ, 'calibracao');
+    await mkdir(pasta, { recursive: true });
+    // Prefixo `ecac-` porque essa captura mostra a tela autenticada de um
+    // cliente: o .gitignore a mantém fora do versionamento por esse nome.
+    await pagina.screenshot({ path: resolve(pasta, `ecac-${idCertidao}.png`), fullPage: true });
+    console.log(`\nCaptura salva em calibracao/ecac-${idCertidao}.png (fora do versionamento).`);
+
+    return { autenticado: entrou, ...inventario };
+  } finally {
+    await navegador.close().catch(() => {});
+  }
+}
+
 export async function calibrar(idCertidao, opcoes = {}) {
+  if (RECEITAS_ECAC[idCertidao]) return calibrarEcac(idCertidao, opcoes);
+
   const receita = RECEITAS[idCertidao];
   if (!receita) {
     throw new Error(
-      `Sem receita para "${idCertidao}". Disponíveis: ${IDS_RECEITAS.join(', ')}.`,
+      `Sem receita para "${idCertidao}". Disponíveis: ${[...IDS_RECEITAS, ...IDS_ECAC].join(', ')}.`,
     );
   }
 
@@ -209,13 +286,22 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const idCertidao = argv.find((a) => !a.startsWith('--'));
   const headed = argv.includes('--headed');
   const tipo = argv[argv.indexOf('--tipo') + 1];
+  const cliente = argv[argv.indexOf('--cliente') + 1];
 
   if (!idCertidao) {
-    console.error(`Uso: npm run calibrar -- <certidao>\nDisponíveis: ${IDS_RECEITAS.join(', ')}`);
+    console.error(
+      `Uso: npm run calibrar -- <certidao> [--tipo cpf] [--cliente <nome>] [--headed]\n` +
+        `Portais públicos: ${IDS_RECEITAS.join(', ')}\n` +
+        `e-CAC (exige certificado): ${IDS_ECAC.join(', ')}`,
+    );
     process.exit(1);
   }
 
-  calibrar(idCertidao, { headed, tipo: argv.includes('--tipo') ? tipo : undefined }).catch((erro) => {
+  calibrar(idCertidao, {
+    headed,
+    tipo: argv.includes('--tipo') ? tipo : undefined,
+    cliente: argv.includes('--cliente') ? cliente : undefined,
+  }).catch((erro) => {
     console.error(`Erro: ${erro.message}`);
     process.exit(1);
   });
