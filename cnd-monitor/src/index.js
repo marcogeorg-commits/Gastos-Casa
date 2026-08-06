@@ -103,8 +103,14 @@ cnd-monitor — consulta mensal de certidões da carteira de clientes
     `Competência ${competencia} · ${config.clientes.length} clientes · provedor padrão "${config.provedorPadrao}"`,
   );
 
+  // Quatro janelas abrindo ao mesmo tempo, todas esperando captcha, seriam
+  // inutilizáveis: quem resolve é uma pessoa, e uma pessoa faz uma de cada vez.
+  const assistido = [config.provedorPadrao, ...Object.values(config.provedores)].includes(
+    'assistido',
+  );
+
   const execucao = await executar(config, credenciais, {
-    concorrencia: Number(args.concorrencia ?? 4),
+    concorrencia: assistido ? 1 : Number(args.concorrencia ?? 4),
     env,
     aoProgredir: ({ concluidas, total, resultado }) => {
       const s = descreverSituacao(resultado.situacao);

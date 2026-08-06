@@ -3,8 +3,9 @@ import * as infosimples from './infosimples.js';
 import * as serpro from './serpro.js';
 import * as web from './web.js';
 import * as ecac from './ecac.js';
+import * as assistido from './assistido.js';
 
-export const PROVEDORES = { mock, infosimples, serpro, web, ecac };
+export const PROVEDORES = { mock, infosimples, serpro, web, ecac, assistido };
 
 /**
  * Ordem de preferencia do modo automatico.

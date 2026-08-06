@@ -70,6 +70,90 @@ export function receitaFormulario(config) {
       return porTipo ? [porTipo, ...urlsPadrao] : urlsPadrao;
     },
 
+    /**
+     * Modo assistido: a maquina faz tudo, menos o captcha.
+     *
+     * O captcha existe para exigir uma pessoa. Nao proibe que a maquina abra o
+     * portal, atravesse as telas intermediarias, digite o documento e leia o
+     * desfecho -- so exige que um humano resolva **aquele** passo. Automatizar
+     * os outros nao burla nada; encurta o que sobra para o operador.
+     *
+     * Para vinte clientes isso troca "abrir vinte abas, digitar vinte CNPJs,
+     * copiar vinte respostas" por "resolver vinte captchas".
+     */
+    async executarAssistido(argumentos) {
+      const { pagina, cliente, primeiroVisivel, esperarSeletor, registrar } = argumentos;
+      const avisar = registrar ?? (() => {});
+      const esperar = esperarSeletor;
+      const { campoDocumento, campoNascimento, alvoResultado } = config.seletores;
+
+      for (const passo of config.preparacao ?? []) {
+        const alvo = await primeiroVisivel(pagina, passo.candidatos);
+        if (!alvo) continue;
+        await alvo.click({ timeout: 5000 }).catch(() => {});
+        await pagina.waitForLoadState('networkidle').catch(() => {});
+      }
+
+      const campo = await esperar(pagina, campoDocumento);
+      if (!campo) {
+        return {
+          situacao: 'erro',
+          detalhe: `Campo do documento não encontrado. Rode "npm run calibrar -- ${config.id}".`,
+        };
+      }
+
+      const valor =
+        config.formatoDocumento === 'formatado' ? formatar(cliente.documento) : cliente.documento;
+      await pagina.fill(campo, valor);
+
+      const nascimento = await esperar(pagina, campoNascimento ?? [], 2000);
+      if (nascimento && cliente.dataNascimento) {
+        await pagina.fill(nascimento, cliente.dataNascimento);
+      }
+
+      // Daqui em diante quem age e a pessoa. A instrucao precisa ser exata:
+      // ela vai ler isso no painel, com o navegador ja aberto na frente.
+      avisar(
+        `      ${config.nome} · ${cliente.nome}: documento preenchido. ` +
+          'Resolva o captcha na janela do navegador e clique em enviar.',
+      );
+
+      const respondeu = await esperarDesfecho(
+        pagina,
+        config,
+        argumentos.esperaHumano ?? 300_000,
+        pagina.url(),
+      );
+      if (!respondeu) {
+        return {
+          situacao: 'manual',
+          detalhe:
+            'A janela ficou aberta pelo tempo previsto e o resultado não apareceu. ' +
+            'Se você resolveu o captcha e mesmo assim não passou, consulte no portal.',
+        };
+      }
+
+      await pagina.waitForLoadState('networkidle').catch(() => {});
+
+      const limpo = await textoDoResultado(pagina, alvoResultado, esperar, config.ruidos);
+      if (!limpo) {
+        return { situacao: 'erro', detalhe: 'A página não trouxe texto de resultado.' };
+      }
+
+      const situacao = interpretarTexto(limpo);
+      if (!situacao) {
+        return { situacao: 'erro', detalhe: `Resposta não reconhecida: "${limpo.slice(0, 180)}"` };
+      }
+
+      return {
+        situacao,
+        detalhe: limpo.slice(0, 240),
+        numeroCertidao:
+          limpo.match(REGEX_CONTROLE)?.[1] ?? limpo.match(REGEX_CONTROLE_RFB)?.[1] ?? null,
+        validaAte: extrairValidade(limpo),
+      };
+    },
+
     async executar(argumentos) {
       const { pagina, dormir, registrar, env = {} } = argumentos;
       const avisar = registrar ?? (() => {});
@@ -188,22 +272,28 @@ async function textoDoResultado(pagina, candidatos, esperar, ruidos = []) {
  * em vez de navegar -- que e justamente o caso de erro, o mais frequente numa
  * hora ruim. Tres tentativas assim viravam minutos de silencio.
  */
-async function esperarDesfecho(pagina, config, tempoLimite = 45_000) {
+async function esperarDesfecho(pagina, config, tempoLimite = 45_000, urlInicial = null) {
   const sinais = config.sinaisResultado ?? [];
-  if (!config.urlResultado && sinais.length === 0) return;
 
-  await pagina
+  // `urlInicial` e o modo assistido: la nao ha sinal declarado em toda receita,
+  // e o que se sabe com certeza e que a pagina era aquela quando a vez passou
+  // para a pessoa. Sair dela e desfecho.
+  if (!config.urlResultado && sinais.length === 0 && !urlInicial) return true;
+
+  return pagina
     .waitForFunction(
-      ({ seletores, padraoUrl }) => {
+      ({ seletores, padraoUrl, antes }) => {
+        if (antes && location.href !== antes) return true;
         if (padraoUrl && new RegExp(padraoUrl).test(location.href)) return true;
         return seletores.some(
           (s) => (document.querySelector(s)?.textContent ?? '').trim().length > 0,
         );
       },
-      { seletores: sinais, padraoUrl: config.urlResultado?.source ?? null },
+      { seletores: sinais, padraoUrl: config.urlResultado?.source ?? null, antes: urlInicial },
       { timeout: tempoLimite },
     )
-    .catch(() => {});
+    .then(() => true)
+    .catch(() => false);
 }
 
 /** Uma passada pelo formulário: preenche, envia e lê o que voltou. */

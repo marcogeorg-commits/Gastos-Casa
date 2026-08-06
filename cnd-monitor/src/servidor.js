@@ -35,6 +35,9 @@ const PORTA_PADRAO = 8787;
 const LIMITE_CORPO = 2 * 1024 * 1024;
 const LIMITE_LINHAS = 500;
 const LIMITE_AVULSA = 120_000;
+// No assistido o relogio conta o tempo de uma pessoa resolvendo captchas, um
+// por certidao. Dois minutos cortariam a consulta no meio do trabalho dela.
+const LIMITE_AVULSA_ASSISTIDO = 900_000;
 
 const TIPOS = {
   '.html': 'text/html; charset=utf-8',
@@ -370,18 +373,24 @@ async function tratarApi(req, res, rota, raiz, porta) {
     // 30s de espera), o que faz sentido numa rodada mensal desacompanhada e
     // nao faz nenhum com alguem esperando na frente da tela.
     const execucao = await Promise.race([
-      executar(config, credenciaisDoAmbiente(ambiente), { concorrencia: 4, env: ambiente }),
+      executar(config, credenciaisDoAmbiente(ambiente), {
+        // Assistido é sequencial: quem resolve o captcha é uma pessoa.
+        concorrencia: corpo.provedor === 'assistido' ? 1 : 4,
+        env: ambiente,
+      }),
       new Promise((_, falhar) =>
         setTimeout(
           () =>
             falhar(
               new Error(
-                'A consulta passou de 2 minutos e foi interrompida. Os portais públicos ' +
-                  'costumam estar lentos ou exigindo captcha — tente de novo, ou consulte ' +
-                  'no site do órgão.',
+                corpo.provedor === 'assistido'
+                  ? 'A consulta assistida passou de 15 minutos e foi interrompida.'
+                  : 'A consulta passou de 2 minutos e foi interrompida. Os portais públicos ' +
+                    'costumam estar lentos ou exigindo captcha — tente de novo, ou use o ' +
+                    'modo assistido, que abre o portal preenchido para você resolver o captcha.',
               ),
             ),
-          LIMITE_AVULSA,
+          corpo.provedor === 'assistido' ? LIMITE_AVULSA_ASSISTIDO : LIMITE_AVULSA,
         ),
       ),
     ]);
