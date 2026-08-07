@@ -78,23 +78,62 @@ test('examina o PDF inteiro: de quem é, qual é, como está e até quando vale'
   assert.equal(r.validaAte, '02/02/2027');
 });
 
-test('o que não dá para ler é recusado com o motivo, nunca adivinhado', async () => {
+/**
+ * Ruido e problema sao coisas diferentes.
+ *
+ * Apontar a pasta de Downloads de um escritorio e receber duzentas linhas de
+ * falha esconde as duas certidoes que estavam la no meio. Balancete nao e
+ * falha; e balancete. So o que E certidao e nao entrou vira problema.
+ */
+test('o que não é certidão é ignorado; o que é certidão e falha vira problema', async () => {
   const pasta = await mkdtemp(join(tmpdir(), 'cnd-imp-'));
 
   const naoPdf = join(pasta, 'planilha.xlsx');
   await writeFile(naoPdf, 'qualquer coisa');
-  assert.match((await examinar(naoPdf)).erro, /não é um PDF/);
+  assert.match((await examinar(naoPdf)).ignorado, /não é um PDF/);
 
-  const ilegivel = join(pasta, 'vazio.pdf');
-  await writeFile(ilegivel, '%PDF-1.4 sem fluxo nenhum');
-  assert.match((await examinar(ilegivel)).erro, /texto/);
+  // Digitalizacao: o texto nao sai. Nao e falha do programa nem do operador.
+  const digitalizado = join(pasta, 'scan.pdf');
+  await writeFile(digitalizado, '%PDF-1.4 sem fluxo nenhum');
+  assert.match((await examinar(digitalizado)).ignorado, /digitalização|texto/);
 
-  // Documento legível, mas que não é certidão nenhuma. Sem deslocamento de
-  // fonte: com ele, o texto nem chegaria a ser decifrado -- a decifração se
-  // apoia em reconhecer palavra de certidão, e um contrato não tem nenhuma.
-  const outro = join(pasta, 'outro.pdf');
-  await writeFile(outro, pdfFalso('Contrato de prestacao de servicos CNPJ: 11.222.333/0001-81', 0));
-  assert.match((await examinar(outro)).erro, /não reconheci/);
+  const balancete = join(pasta, 'balancete.pdf');
+  await writeFile(balancete, pdfFalso('BALANCETE Prefeitura Municipal CNPJ: 11.222.333/0001-81', 0));
+  assert.match((await examinar(balancete)).ignorado, /não é uma certidão/);
+
+  // Ja isto E certidao e nao entrou: o operador precisa saber.
+  const semDocumento = join(pasta, 'certidao.pdf');
+  await writeFile(semDocumento, pdfFalso('CERTIDAO NEGATIVA DE DEBITOS TRABALHISTAS Tribunal Superior do Trabalho', 0));
+  const r = await examinar(semDocumento);
+  assert.equal(r.ignorado, undefined);
+  assert.match(r.erro, /é certidão, mas não achei CNPJ/);
+});
+
+/**
+ * "Santa Catarina" numa proposta comercial virava certidao da SEFAZ/SC, e
+ * "Prefeitura" num balancete virava certidao municipal. Com o CNPJ no cadastro,
+ * o arquivo teria sido guardado como certidao do cliente -- e o relatorio
+ * passaria a afirmar, com documento anexado, uma situacao que ninguem apurou.
+ */
+test('nome de estado ou de órgão, sozinho, não faz uma certidão', async () => {
+  const { pareceCertidao } = await import('../src/importar.js');
+
+  assert.equal(reconhecerCertidao('PROPOSTA DE HONORARIOS ... Santa Catarina ... CNPJ: 1'), null);
+  assert.equal(reconhecerCertidao('BALANCETE Prefeitura Municipal de Blumenau'), null);
+  assert.equal(reconhecerCertidao('Nota fiscal emitida em Santa Catarina'), null);
+
+  // E o que e certidao de verdade continua sendo reconhecido.
+  assert.equal(
+    reconhecerCertidao('CERTIDAO NEGATIVA Secretaria de Estado da Fazenda de Santa Catarina'),
+    'sefaz_sc',
+  );
+  assert.equal(
+    reconhecerCertidao('Certificado de Regularidade do FGTS Caixa Economica Federal'),
+    'fgts_crf',
+  );
+
+  assert.equal(pareceCertidao('uma proposta comercial'), false);
+  assert.equal(pareceCertidao('CERTIDÃO NEGATIVA'), true);
 });
 
 async function raizDeTeste() {

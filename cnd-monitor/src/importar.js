@@ -55,7 +55,24 @@ const ASSINATURAS = [
   { id: 'municipal', marca: /prefeitura|munic[ií]pio de/i },
 ];
 
+/**
+ * Antes de qualquer assinatura: isto e uma certidao?
+ *
+ * Sem esta pergunta, "Santa Catarina" numa proposta comercial virava certidao
+ * da SEFAZ/SC, e "Prefeitura" num balancete virava certidao municipal. Se o
+ * CNPJ estivesse no cadastro, o arquivo teria sido guardado como certidao do
+ * cliente -- e o relatorio passaria a afirmar, com um documento anexado, uma
+ * situacao fiscal que ninguem verificou.
+ *
+ * A palavra que toda certidao tem e "certidao" (ou, no FGTS, "certificado de
+ * regularidade"). Nome de estado e de orgao, sozinhos, nao dizem nada.
+ */
+export function pareceCertidao(texto) {
+  return /certid[ãa]o|certificado de regularidade/i.test(String(texto ?? ''));
+}
+
 export function reconhecerCertidao(texto) {
+  if (!pareceCertidao(texto)) return null;
   return ASSINATURAS.find((a) => a.marca.test(String(texto ?? '')))?.id ?? null;
 }
 
@@ -95,18 +112,28 @@ export function trecho(texto, limite = 400) {
   return (inicio > 0 ? limpo.slice(inicio) : limpo).slice(0, limite);
 }
 
-/** O que este PDF é, sem ainda tocar em disco. */
+/**
+ * O que este PDF é, sem ainda tocar em disco.
+ *
+ * A ordem das perguntas é o que separa ruído de problema. "Não é certidão" vem
+ * primeiro e devolve `ignorado`, não `erro`: apontar uma pasta com duzentos
+ * arquivos de escritório e receber duzentas linhas de falha esconde as duas
+ * certidões que estavam lá no meio. Balancete não é falha; é balancete.
+ *
+ * Depois disso, sim, todo problema é reportado -- porque a partir dali se está
+ * diante de uma certidão que deveria ter entrado e não entrou.
+ */
 export async function examinar(caminho, ler = readFile) {
-  if (!/\.pdf$/i.test(caminho)) return { erro: 'não é um PDF' };
+  if (!/\.pdf$/i.test(caminho)) return { ignorado: 'não é um PDF' };
 
   const texto = await ler(caminho).then(extrairTextoPdf).catch(() => null);
-  if (!texto) return { erro: 'não deu para ler o texto deste PDF' };
-
-  const documento = extrairDocumento(texto);
-  if (!documento) return { erro: 'não achei CNPJ nem CPF dentro do documento' };
+  if (!texto) return { ignorado: 'não deu para ler o texto (digitalização ou PDF de imagem)' };
 
   const idCertidao = reconhecerCertidao(texto);
-  if (!idCertidao) return { erro: 'não reconheci qual certidão é' };
+  if (!idCertidao) return { ignorado: 'não é uma certidão' };
+
+  const documento = extrairDocumento(texto);
+  if (!documento) return { erro: 'é certidão, mas não achei CNPJ nem CPF dentro dela', idCertidao };
 
   const situacao = interpretarTexto(texto);
   if (!situacao) return { erro: 'não consegui classificar a situação', documento, idCertidao };
@@ -129,7 +156,7 @@ export function competenciaDe(agora = new Date()) {
 
 export async function importarArquivo(caminho, { raiz = RAIZ, config, competencia }) {
   const achado = await examinar(caminho);
-  if (achado.erro) return { caminho, ...achado };
+  if (achado.erro || achado.ignorado) return { caminho, ...achado };
 
   const cliente = config.clientes.find((c) => limpar(c.documento) === achado.documento);
   if (!cliente) {
@@ -156,7 +183,7 @@ export async function importarArquivo(caminho, { raiz = RAIZ, config, competenci
 
 /** Junta o que foi importado ao histórico da competência. */
 export async function gravarNoHistorico(importados, { raiz = RAIZ, competencia }) {
-  const bons = importados.filter((i) => !i.erro);
+  const bons = importados.filter((i) => !i.erro && !i.ignorado);
   if (bons.length === 0) return null;
 
   const destino = resolve(raiz, 'historico', `${competencia}.json`);
@@ -235,6 +262,7 @@ export async function importar(caminhos, opcoes = {}) {
 
 if (chamadoDireto(import.meta.url)) {
   const alvos = process.argv.slice(2).filter((a) => !a.startsWith('--'));
+  const tudo = process.argv.includes('--tudo');
 
   if (alvos.length === 0) {
     console.error(`
@@ -242,6 +270,7 @@ if (chamadoDireto(import.meta.url)) {
 
     npm run importar -- ~/Downloads/Certidao42160865000165.pdf
     npm run importar -- ~/Downloads
+    npm run importar -- ~/Downloads --tudo    # lista também o que foi ignorado
 
   Lê o documento por dentro: descobre de quem é, qual certidão é, se está
   negativa e até quando vale. Arquiva por cliente e grava no histórico.
@@ -251,18 +280,38 @@ if (chamadoDireto(import.meta.url)) {
 
   const { competencia, importados, historico } = await importar(alvos);
 
-  console.log(`\n  Competência ${competencia}\n`);
-  for (const i of importados) {
-    if (i.erro) {
-      console.log(`  ✗ ${i.caminho.split('/').pop()} — ${i.erro}`);
-      continue;
-    }
+  const entraram = importados.filter((i) => !i.erro && !i.ignorado);
+  const problemas = importados.filter((i) => i.erro);
+  const ignorados = importados.filter((i) => i.ignorado);
+  const nome = (c) => c.split('/').pop();
+
+  console.log(`\n  Competência ${competencia} · ${importados.length} arquivo(s) examinado(s)\n`);
+
+  // O que entrou vem primeiro e sozinho. Numa pasta de escritorio com duzentos
+  // arquivos, as duas certidoes que estavam la nao podem aparecer no meio de
+  // duzentas linhas de "nao e certidao".
+  if (entraram.length === 0) {
+    console.log('  Nenhuma certidão encontrada.');
+  }
+  for (const i of entraram) {
     const validade = i.validaAte ? ` · vale até ${i.validaAte}` : '';
-    console.log(`  ✓ ${i.cliente} · ${CATALOGO[i.idCertidao]?.nome ?? i.idCertidao} · ${i.situacao}${validade}`);
-    console.log(`    ${i.arquivo}`);
+    console.log(`  ✓ ${i.cliente}`);
+    console.log(`    ${CATALOGO[i.idCertidao]?.nome ?? i.idCertidao} · ${i.situacao}${validade}`);
+    console.log(`    ${i.arquivo}\n`);
   }
 
-  const bons = importados.filter((i) => !i.erro).length;
-  console.log(`\n  ${bons} de ${importados.length} importada(s).`);
-  if (historico) console.log(`  Histórico: ${historico}\n`);
+  // Problema e o que era certidao e nao entrou. Isso o operador resolve.
+  if (problemas.length > 0) {
+    console.log(`  ${problemas.length} certidão(ões) com problema:\n`);
+    for (const i of problemas) console.log(`  ✗ ${nome(i.caminho)}\n    ${i.erro}\n`);
+  }
+
+  // O resto e so o resto: balancete nao e falha, e balancete.
+  if (ignorados.length > 0) {
+    console.log(`  ${ignorados.length} arquivo(s) ignorado(s) — não são certidões.`);
+    if (tudo) for (const i of ignorados) console.log(`    · ${nome(i.caminho)} — ${i.ignorado}`);
+    else console.log('    Use --tudo para listá-los.');
+  }
+
+  if (historico) console.log(`\n  Histórico: ${historico}\n`);
 }
