@@ -405,6 +405,7 @@ async function umaTentativa(
 
   // Barras de cookie e modais de aviso cobrem o formulário e engolem o
   // clique. Cada passo é opcional: se não estiver na tela, segue adiante.
+  const pendentes = [];
   for (const passo of config.preparacao ?? []) {
     // Só o que está visível: componentes de aviso ficam no DOM o tempo todo,
     // escondidos, e clicar no invisível não tira nada da frente.
@@ -414,6 +415,13 @@ async function umaTentativa(
     await alvo.click({ timeout: 5000 }).catch(() => {});
     // Esperar sumir evita seguir com o diálogo ainda cobrindo o formulário.
     await alvo.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
+
+    // Se continua de pe, o clique nao pegou -- e isso precisa aparecer. Uma
+    // barra de cookies cobrindo o rodape engole o clique em "Emitir Certidao",
+    // e o portal responde como se nada tivesse sido pedido.
+    if (await alvo.isVisible().catch(() => false)) {
+      pendentes.push(passo.descricao ?? passo.nome ?? 'aviso na tela');
+    }
   }
 
   const campo = await esperar(pagina, campoDocumento);
@@ -483,7 +491,11 @@ async function umaTentativa(
   if (!limpo) {
     return {
       situacao: 'erro',
-      detalhe: `A página não trouxe texto de resultado. Rode "npm run calibrar -- ${config.id}".`,
+      detalhe:
+        'A página não trouxe texto de resultado.' +
+        (pendentes.length > 0
+          ? ` O aviso "${pendentes.join('", "')}" continuou na tela — ele cobre o rodapé, que é onde fica o botão de emitir.`
+          : ` Rode "npm run calibrar -- ${config.id}".`),
     };
   }
 
@@ -551,11 +563,19 @@ export const RECEITAS = {
         descricao: 'aceitar cookies',
         // O botão não tem id e o container varia entre a barra e o painel de
         // configurações avançadas; o texto é a âncora que sobra.
+        // Nao so <button>: o design system do gov.br entrega botao como <a>
+        // estilizado e como elemento proprio. Procurar so pela tag deixava a
+        // barra de pe -- e ela cobre o rodape, onde fica "Emitir Certidao".
         candidatos: [
           'br-cookie-bar button:has-text("Aceitar")',
+          'br-cookie-bar [role="button"]:has-text("Aceitar")',
+          'br-cookie-bar a:has-text("Aceitar")',
           'button:has-text("Aceitar todos")',
           'button:has-text("Aceitar Todos")',
           'button:has-text("Aceitar")',
+          '[role="button"]:has-text("Aceitar")',
+          'a:has-text("Aceitar")',
+          '*:has-text("Aceitar") >> visible=true >> nth=-1',
         ],
       },
       { descricao: 'fechar aviso de mudança de NI', candidatos: ['modal-mudanca-ni button'] },

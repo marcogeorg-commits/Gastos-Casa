@@ -104,3 +104,27 @@ test('campo que recusa a digitação vira erro, não "portal indisponível"', as
     assert.equal(r.encontrado, '4216');
   });
 });
+
+test('a barra de cookies do gov.br não é um <button>', async (t) => {
+  await comNavegador(t, async (navegador) => {
+    const { RECEITAS } = await import('../src/receitas/index.js');
+    const { primeiroVisivel } = await import('../src/provedores/web.js');
+
+    const pagina = await navegador.newPage();
+    // Como o portal entrega: elemento próprio do design system, e o "Aceitar"
+    // é um <a>. Procurar só por `button:has-text("Aceitar")` deixava a barra
+    // de pé — e ela cobre o rodapé, onde fica "Emitir Certidão".
+    await pagina.setContent(`
+      <br-cookie-bar style="position:fixed;bottom:0">
+        Utilizamos cookies.
+        <a href="#" class="br-button primary">Aceitar</a>
+      </br-cookie-bar>
+      <button id="emitir">Emitir Certidão</button>`);
+
+    const passo = RECEITAS.rfb_pgfn.preparacao.find((p) => /cookie/i.test(p.descricao ?? ''));
+    const alvo = await primeiroVisivel(pagina, passo.candidatos);
+
+    assert.ok(alvo, 'o "Aceitar" tem de ser encontrado mesmo não sendo <button>');
+    assert.match(await alvo.textContent(), /Aceitar/);
+  });
+});
