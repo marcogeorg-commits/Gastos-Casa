@@ -87,6 +87,24 @@ export async function escreverDocumento(pagina, campo, valor, documento) {
     : { ok: false, encontrado: final };
 }
 
+/**
+ * Vale a pena tentar de novo?
+ *
+ * Funcao propria porque a decisao e sutil e precisa ser testavel sozinha: a
+ * tela do portal diz "tente novamente dentro de alguns minutos" tanto quando
+ * ele piscou quanto quando o captcha reprovou -- situacoes opostas. So a
+ * resposta da API separa as duas, e ela chega antes de a tela ser lida.
+ *
+ * Enquanto isso ficou dentro do laco, o caso do captcha custava 30s + 60s de
+ * espera por cliente para chegar ao mesmo nao.
+ */
+export function deveRepetir({ situacao, tentativa, tentativas, repetirFazSentido }) {
+  if (situacao !== 'indisponivel') return false;
+  if (tentativa >= tentativas) return false;
+  // Sem informacao da API, vale a leitura da tela -- que pede para repetir.
+  return repetirFazSentido ? repetirFazSentido() : true;
+}
+
 export function receitaFormulario(config) {
   const urlsPadrao = config.urls ?? (config.url ? [config.url] : []);
 
@@ -202,7 +220,7 @@ export function receitaFormulario(config) {
     },
 
     async executar(argumentos) {
-      const { pagina, dormir, registrar, env = {} } = argumentos;
+      const { pagina, dormir, registrar, repetirFazSentido, env = {} } = argumentos;
       const avisar = registrar ?? (() => {});
 
       // O portal responde "tente novamente dentro de alguns minutos" (erro 023)
@@ -216,7 +234,12 @@ export function receitaFormulario(config) {
       for (let tentativa = 1; tentativa <= tentativas; tentativa += 1) {
         resultado = await umaTentativa(config, argumentos);
 
-        if (resultado.situacao !== 'indisponivel' || tentativa === tentativas) break;
+        if (!deveRepetir({ situacao: resultado.situacao, tentativa, tentativas, repetirFazSentido })) {
+          if (resultado.situacao === 'indisponivel' && tentativa < tentativas) {
+            avisar(`      ${config.nome}: a recusa nao e passageira -- nao adianta repetir.`);
+          }
+          break;
+        }
 
         // A espera cresce a cada tentativa. O "023" da Receita diz "tente
         // novamente dentro de alguns minutos" -- e trinta segundos, repetidos,

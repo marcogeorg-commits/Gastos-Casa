@@ -29,6 +29,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { RECEITAS } from './receitas/index.js';
+import { traduzirValidacao } from './provedores/web.js';
 import { formatar, limpar, tipoDocumento, validar } from './documentos.js';
 import { chamadoDireto } from './executavel.js';
 
@@ -123,6 +124,12 @@ export async function diagnosticar(documento, idCertidao = 'rfb_pgfn', opcoes = 
     const corpo = await r.text().catch(() => null);
     if (corpo && corpo.length < 200_000) {
       d.escrever(`    corpo: ${corpo.replace(/\s+/g, ' ').slice(0, LIMITE_CORPO)}`);
+
+      // Nomear a recusa aqui, junto do corpo que a produziu, evita que quem le
+      // o diario tenha de saber de cor o que "023" significa.
+      const json = await r.json().catch(() => null);
+      const traduzido = traduzirValidacao(json);
+      if (traduzido) d.escrever(`    >> ${traduzido.detalhe}`);
     }
   });
 

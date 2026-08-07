@@ -352,6 +352,14 @@ export async function consultar({ cliente, idCertidao, env = process.env, compet
         primeiroVisivel,
         esperarSeletor,
         env,
+        // A repeticao so faz sentido enquanto a recusa for passageira. Quem
+        // sabe disso e a resposta da API, e ela chega antes de a tela ser lida
+        // -- por isso a pergunta vai para dentro do laco de tentativas, em vez
+        // de ser respondida depois que ele ja gastou tres esperas.
+        repetirFazSentido: () => {
+          const t = traduzirValidacao(validacao);
+          return !t || t.situacao === 'indisponivel';
+        },
         // Progresso vai para stderr: a saída normal é o resultado da consulta.
         registrar: (mensagem) => console.error(mensagem),
       });

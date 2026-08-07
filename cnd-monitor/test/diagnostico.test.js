@@ -110,3 +110,34 @@ test('status desconhecido não recebe recomendação inventada', async () => {
   assert.match(r.detalhe, /diagnostico/i, 'aponta como investigar em vez de adivinhar');
   assert.doesNotMatch(r.detalhe, /aguarde|tente novamente/i);
 });
+
+/**
+ * A recusa que não é passageira não pode custar três esperas.
+ *
+ * A tela diz "tente novamente dentro de alguns minutos" tanto quando o portal
+ * piscou quanto quando o captcha reprovou — situações opostas. A tradução da
+ * resposta da API existia, mas acontecia DEPOIS do laço de tentativas: o
+ * captcha ainda custava 30s + 60s de espera por cliente para chegar ao mesmo
+ * não. Em vinte e dois clientes, meia hora jogada fora.
+ */
+test('só repete o que tem chance de mudar', async () => {
+  const { deveRepetir } = await import('../src/receitas/index.js');
+
+  const caso = (extra) =>
+    deveRepetir({ situacao: 'indisponivel', tentativa: 1, tentativas: 3, ...extra });
+
+  // Portal que piscou: repetir resolve.
+  assert.equal(caso({ repetirFazSentido: () => true }), true);
+  // Captcha reprovado: vai reprovar de novo. Nem uma espera.
+  assert.equal(caso({ repetirFazSentido: () => false }), false);
+  // Sem resposta da API, vale a leitura da tela — que pede para repetir.
+  assert.equal(caso({}), true);
+
+  // E o resto das regras continua valendo.
+  assert.equal(caso({ tentativa: 3, repetirFazSentido: () => true }), false, 'última tentativa');
+  assert.equal(
+    deveRepetir({ situacao: 'negativa', tentativa: 1, tentativas: 3, repetirFazSentido: () => true }),
+    false,
+    'desfecho bom não se repete',
+  );
+});

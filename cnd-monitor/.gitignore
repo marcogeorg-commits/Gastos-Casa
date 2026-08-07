@@ -14,6 +14,20 @@ calibracao/ecac-*
 # Senhas dos certificados digitais. Nunca versionar: com o .pfx correspondente
 # elas permitem assinar como o cliente. Ver src/ambiente.js.
 .env
+.env.local
+
+# Certificado digital em qualquer formato, em qualquer pasta. A regra do
+# `Certificados/` na raiz cobre o lugar certo; esta cobre o engano -- um .pfx
+# salvo por descuido dentro do projeto. Commitado uma vez, fica no historico
+# para sempre, e com a senha permite assinar como o cliente.
+*.pfx
+*.p12
+*.pem
+*.key
+*.crt
+*.cer
+# A cadeia baixada por `npm run cadeia` e publica e ja tem pasta propria.
+!ca/*.pem
 
 # Cadastro real da carteira: CNPJ e CPF de terceiros, reescrito pelo painel a
 # cada edicao. O modelo versionado e o clientes.exemplo.json.

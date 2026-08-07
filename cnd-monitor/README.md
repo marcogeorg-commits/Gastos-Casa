@@ -251,6 +251,23 @@ rodada no meio.
 
 Também dá pelo ambiente, para valer em toda rodada: `INTERVALO_CONSULTAS=20000`.
 
+### Quando o portal recusa: o que cada mensagem quer dizer
+
+A tela do portal e a resposta da API dele contam histórias diferentes. Vale a
+segunda, e é ela que o programa passou a ler.
+
+| O que aparece na tela | O que a API diz | O que fazer |
+|---|---|---|
+| "Não foi possível concluir a ação… tente novamente dentro de alguns minutos. **023**" | `CaptchaFalhaValidacao` | **Não é indisponibilidade.** É o hCaptcha reprovando a automação. Repetir não resolve: emita no navegador, ou use provedor com acesso autorizado. |
+| a mesma frase | `ServicoIndisponivel` | aí sim é o portal. Esperar e repetir faz sentido — e o programa já faz, com espera crescente. |
+| a mesma frase | `DocumentoInvalido` | o defeito está no cadastro: confira o CNPJ/CPF. |
+
+Para ver a resposta crua e descobrir um status ainda não catalogado:
+
+```bash
+npm run diagnostico -- --documento <CNPJ>
+```
+
 ### "No navegador abre e aqui não"
 
 Se a consulta parar com **"Esta máquina não reconhece a cadeia de certificação
