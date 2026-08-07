@@ -134,6 +134,35 @@ test('nome de estado ou de órgão, sozinho, não faz uma certidão', async () =
 
   assert.equal(pareceCertidao('uma proposta comercial'), false);
   assert.equal(pareceCertidao('CERTIDÃO NEGATIVA'), true);
+
+  // Marca fraca que voltou a ser fraca: "Caixa Economica" esta em todo boleto.
+  assert.equal(reconhecerCertidao('Boleto Caixa Economica Federal vencimento 10/08'), null);
+  // E uma proposta que OFERECE emissao de certidoes tambem nao e uma certidao.
+  assert.equal(
+    reconhecerCertidao('PROPOSTA: emissao de certidoes negativas, escritorio de Santa Catarina'),
+    null,
+  );
+});
+
+/**
+ * O acento estragado nao pode fazer o programa recusar a certidao de verdade.
+ *
+ * O deslocamento da fonte acerta as letras comuns e erra as acentuadas: no PDF
+ * da Receita, "CERTIDAO" chega como "CERTIDEO" (com E circunflexo). A primeira
+ * versao deste filtro exigia a grafia certa -- e sumiu com uma certidao que ja
+ * tinha sido importada com sucesso na rodada anterior.
+ */
+test('certidão com acento estragado pela fonte continua sendo certidão', async () => {
+  const { pareceCertidao } = await import('../src/importar.js');
+
+  const comoVemDoPdf = 'CERTID\u00caO NEGATIVA DE D BITOS RELATIVOS AOS TRIBUTOS FEDERAIS';
+  assert.equal(pareceCertidao(comoVemDoPdf), true);
+  assert.equal(reconhecerCertidao(comoVemDoPdf), 'rfb_pgfn');
+
+  // As grafias sadias tambem, claro.
+  for (const g of ['CERTIDÃO NEGATIVA', 'certidao negativa', 'Certidões emitidas']) {
+    assert.equal(pareceCertidao(g), true, g);
+  }
 });
 
 async function raizDeTeste() {

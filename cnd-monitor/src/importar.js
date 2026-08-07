@@ -47,33 +47,51 @@ const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '..');
  * Confiar no nome do arquivo seria voltar ao erro dos certificados, em que o
  * programa deduzia do nome e errava.
  */
-const ASSINATURAS = [
-  { id: 'rfb_pgfn', marca: /tributos federais|d[ií]vida ativa da uni[ãa]o|procuradoria-geral da fazenda/i },
-  { id: 'cndt', marca: /d[ée]bitos trabalhistas|tribunal superior do trabalho|banco nacional de devedores/i },
-  { id: 'fgts_crf', marca: /regularidade do fgts|fundo de garantia|caixa econ[ôo]mica/i },
-  { id: 'sefaz_sc', marca: /santa catarina|secretaria de estado da fazenda/i },
-  { id: 'municipal', marca: /prefeitura|munic[ií]pio de/i },
-];
+/**
+ * A palavra "certidao", tolerante ao acento estragado.
+ *
+ * O deslocamento da fonte acerta as letras comuns e erra as acentuadas: no PDF
+ * da Receita, "CERTIDÃO" chega como "CERTIDÊO". Exigir a grafia certa fazia o
+ * programa recusar justamente as certidoes de verdade -- foi o que aconteceu
+ * na primeira versao deste filtro, que sumiu com uma certidao ja importada.
+ */
+const CERTIDAO = /certid\S{0,2}o\b|certid\S{0,2}es\b|certificado de regularidade/i;
 
 /**
- * Antes de qualquer assinatura: isto e uma certidao?
+ * Qual certidão é esta, pelo que está escrito nela.
  *
- * Sem esta pergunta, "Santa Catarina" numa proposta comercial virava certidao
- * da SEFAZ/SC, e "Prefeitura" num balancete virava certidao municipal. Se o
- * CNPJ estivesse no cadastro, o arquivo teria sido guardado como certidao do
- * cliente -- e o relatorio passaria a afirmar, com um documento anexado, uma
- * situacao fiscal que ninguem verificou.
+ * Cada marca é a frase que só aquela certidão tem. Marcas fracas -- nome de
+ * estado, nome de banco -- exigem também a palavra "certidão", porque sozinhas
+ * aparecem em nota fiscal, boleto e papel timbrado. "Caixa Econômica" saiu da
+ * lista: está em todo boleto bancário.
+ */
+const ASSINATURAS = [
+  { id: 'rfb_pgfn', marca: /tributos federais|d[ií]vida ativa da uni[ãa]o|procuradoria-geral da fazenda/i },
+  { id: 'cndt', marca: /d[ée]bitos trabalhistas|banco nacional de devedores/i },
+  { id: 'fgts_crf', marca: /regularidade do fgts|regularidade do empregador/i },
+  { id: 'sefaz_sc', marca: /secretaria de estado da fazenda/i, exigeCertidao: true },
+  { id: 'municipal', marca: /prefeitura|munic[ií]pio de/i, exigeCertidao: true },
+];
+/**
+ * O documento se apresenta como certidão?
  *
- * A palavra que toda certidao tem e "certidao" (ou, no FGTS, "certificado de
- * regularidade"). Nome de estado e de orgao, sozinhos, nao dizem nada.
+ * Sem esta pergunta, "Santa Catarina" numa proposta comercial virava certidão
+ * da SEFAZ/SC e "Prefeitura" num balancete virava certidão municipal. Com o
+ * CNPJ no cadastro, o arquivo teria sido guardado como certidão do cliente --
+ * e o relatório passaria a afirmar, com PDF anexado, uma situação que ninguém
+ * apurou.
  */
 export function pareceCertidao(texto) {
-  return /certid[ãa]o|certificado de regularidade/i.test(String(texto ?? ''));
+  return CERTIDAO.test(String(texto ?? ''));
 }
 
 export function reconhecerCertidao(texto) {
-  if (!pareceCertidao(texto)) return null;
-  return ASSINATURAS.find((a) => a.marca.test(String(texto ?? '')))?.id ?? null;
+  const t = String(texto ?? '');
+  const achada = ASSINATURAS.find((a) => a.marca.test(t));
+  if (!achada) return null;
+
+  // A marca forte fala por si; a fraca precisa da palavra ao lado.
+  return !achada.exigeCertidao || pareceCertidao(t) ? achada.id : null;
 }
 
 /**
