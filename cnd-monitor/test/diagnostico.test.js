@@ -65,12 +65,48 @@ test('o "023" é captcha reprovado, não portal fora do ar', async () => {
   assert.match(r.detalhe, /captcha/i);
   assert.match(r.detalhe, /repetir n[aã]o/i, 'tem de dizer que insistir não resolve');
 
-  // Outra recusa qualquer também é nomeada, em vez de virar "indisponível".
+  // Outra recusa qualquer também é nomeada, em vez de virar "indisponível" —
+  // e documento inválido é `erro`, não `manual`: o defeito está no cadastro,
+  // e mandar o operador consultar à mão não conserta o CNPJ errado.
   const outra = traduzirValidacao({ statusValidacao: 'DocumentoInvalido', codigo: '011' });
-  assert.equal(outra.situacao, 'manual');
+  assert.equal(outra.situacao, 'erro');
   assert.match(outra.detalhe, /DocumentoInvalido/);
 
   // Sem resposta de API, quem manda continua sendo a leitura da tela.
   assert.equal(traduzirValidacao(null), null);
   assert.equal(traduzirValidacao({}), null);
+});
+
+/**
+ * A recomendação errada custa tanto quanto o diagnóstico errado.
+ *
+ * "Aguarde e tente novamente" diante de um captcha reprovado manda o operador
+ * esperar por um portal que não tem problema nenhum — foi assim que a rotina
+ * passou o dia tentando três vezes.
+ */
+test('cada recusa do portal leva ao desfecho que corresponde a ela', async () => {
+  const { traduzirValidacao } = await import('../src/provedores/web.js');
+  const desfecho = (statusValidacao) => traduzirValidacao({ statusValidacao, codigo: 'x' }).situacao;
+
+  // Captcha: não adianta esperar, adianta uma pessoa.
+  assert.equal(desfecho('CaptchaFalhaValidacao'), 'manual');
+  // Documento recusado é problema do cadastro; insistir repete o mesmo dado errado.
+  assert.equal(desfecho('DocumentoInvalido'), 'erro');
+  assert.equal(desfecho('ContribuinteNaoEncontrado'), 'erro');
+  // Acesso negado não se resolve sozinho.
+  assert.equal(desfecho('NaoAutorizado'), 'manual');
+  // E este é o único caso em que esperar faz sentido.
+  assert.equal(desfecho('ServicoIndisponivel'), 'indisponivel');
+});
+
+test('status desconhecido não recebe recomendação inventada', async () => {
+  const { traduzirValidacao } = await import('../src/provedores/web.js');
+
+  const r = traduzirValidacao({ statusValidacao: 'AlgoQueNuncaVimos', codigo: '999' });
+
+  assert.equal(r.situacao, 'manual');
+  // O nome cru é o que permite descobrir o que ele significa da próxima vez.
+  assert.match(r.detalhe, /AlgoQueNuncaVimos/);
+  assert.match(r.detalhe, /diagnostico/i, 'aponta como investigar em vez de adivinhar');
+  assert.doesNotMatch(r.detalhe, /aguarde|tente novamente/i);
 });

@@ -441,23 +441,59 @@ export async function lerDoComprovante(caminho, ler = readFile) {
  * por um portal que nao tem problema nenhum. Repetir nao adianta: o captcha vai
  * reprovar de novo, e cada tentativa e mais uma batida no mesmo portal.
  */
+/**
+ * O que cada recusa do portal quer dizer, e o que fazer com ela.
+ *
+ * A tabela existe porque a recomendacao errada custa tanto quanto o
+ * diagnostico errado: "aguarde e tente novamente" diante de um captcha
+ * reprovado manda o operador esperar por um portal que nao tem problema
+ * nenhum -- foi assim que a rotina passou o dia tentando tres vezes.
+ *
+ * Status desconhecido NAO recebe recomendacao inventada: recebe o nome cru,
+ * que e o que permite descobrir o que ele significa da proxima vez.
+ */
+const RECUSAS = [
+  {
+    quando: /captcha/i,
+    situacao: 'manual',
+    diz: (c) =>
+      `O portal reprovou o captcha (${c}). Na tela ele escreve "tente novamente dentro de ` +
+      'alguns minutos", mas nao e indisponibilidade e repetir nao resolve. Emita no navegador ' +
+      'do escritorio, ou use um provedor com acesso autorizado.',
+  },
+  {
+    // Documento recusado e problema do cadastro, nao do portal: insistir so
+    // repete o erro com o mesmo dado errado.
+    quando: /documento|contribuinte|inscricao|ni\b/i,
+    situacao: 'erro',
+    diz: (c) => `O portal nao reconheceu o documento informado (${c}). Confira o CNPJ/CPF no cadastro.`,
+  },
+  {
+    quando: /autoriza|acesso|permiss|credencial/i,
+    situacao: 'manual',
+    diz: (c) => `O portal negou acesso a esta consulta (${c}).`,
+  },
+  {
+    // Este e o unico caso em que esperar faz sentido.
+    quando: /indisponivel|manutencao|timeout|servico/i,
+    situacao: 'indisponivel',
+    diz: (c) => `O portal se declarou indisponivel (${c}).`,
+  },
+];
+
 export function traduzirValidacao(corpo) {
   const status = corpo?.statusValidacao;
   if (!status) return null;
 
-  if (/captcha/i.test(status)) {
-    return {
-      situacao: 'manual',
-      detalhe:
-        'O portal reprovou o captcha (statusValidacao: ' +
-        `${status}, codigo ${corpo.codigo ?? '?'}). A mensagem que ele mostra na tela fala em ` +
-        '"tente novamente dentro de alguns minutos", mas nao e indisponibilidade e repetir nao ' +
-        'resolve. Emita esta certidao no seu navegador, ou use um provedor com acesso autorizado.',
-    };
-  }
+  const cru = `statusValidacao: ${status}, codigo ${corpo.codigo ?? '?'}`;
+  const conhecida = RECUSAS.find((r) => r.quando.test(status));
 
-  return {
-    situacao: 'manual',
-    detalhe: `O portal recusou a emissao (statusValidacao: ${status}, codigo ${corpo.codigo ?? '?'}).`,
-  };
+  return conhecida
+    ? { situacao: conhecida.situacao, detalhe: conhecida.diz(cru) }
+    : {
+        situacao: 'manual',
+        detalhe:
+          `O portal recusou a emissao (${cru}). Este status ainda nao foi visto: rode ` +
+          '"npm run diagnostico" para ver a resposta inteira antes de concluir o que ele significa.',
+      };
 }
