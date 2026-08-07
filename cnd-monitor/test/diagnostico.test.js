@@ -44,3 +44,33 @@ test('o diário guarda a ordem e o relógio de cada passo', () => {
   assert.match(linhas[1], /2\.5s\] ── Enviando/);
   assert.match(linhas[2], /4s\] clicou/);
 });
+
+/**
+ * O portal conta uma coisa na tela e outra na resposta da API.
+ *
+ *   tela:  "Não foi possível concluir a ação para o contribuinte informado.
+ *           Por favor, tente novamente dentro de alguns minutos. 023"
+ *   API:   {"statusValidacao":"CaptchaFalhaValidacao","codigo":"023"}
+ *
+ * A frase da tela levou a rotina a tratar como portal fora do ar e tentar de
+ * novo três vezes — e levou horas de investigação pelo caminho errado.
+ */
+test('o "023" é captcha reprovado, não portal fora do ar', async () => {
+  const { traduzirValidacao } = await import('../src/provedores/web.js');
+
+  const r = traduzirValidacao({ statusValidacao: 'CaptchaFalhaValidacao', codigo: '023' });
+
+  // "indisponivel" dispara três tentativas contra um portal que está de pé.
+  assert.equal(r.situacao, 'manual');
+  assert.match(r.detalhe, /captcha/i);
+  assert.match(r.detalhe, /repetir n[aã]o/i, 'tem de dizer que insistir não resolve');
+
+  // Outra recusa qualquer também é nomeada, em vez de virar "indisponível".
+  const outra = traduzirValidacao({ statusValidacao: 'DocumentoInvalido', codigo: '011' });
+  assert.equal(outra.situacao, 'manual');
+  assert.match(outra.detalhe, /DocumentoInvalido/);
+
+  // Sem resposta de API, quem manda continua sendo a leitura da tela.
+  assert.equal(traduzirValidacao(null), null);
+  assert.equal(traduzirValidacao({}), null);
+});

@@ -258,6 +258,56 @@ base, nenhuma mudança aparecia depois, e a consulta voltava como "ninguém agiu
 E a janela fechava antes de o operador ler o erro. Corrigido duas vezes: na
 primeira, um `return` no meio do caminho pulava a espera.
 
+### 4.11 O "023" era o captcha, e o portal dizia outra coisa
+
+**A investigação mais cara do projeto, resolvida por uma linha de log.**
+
+Durante horas, o portal respondeu:
+
+> *"Não foi possível concluir a ação para o contribuinte informado. Por favor,
+> tente novamente dentro de alguns minutos. 023"*
+
+Frase que soa como indisponibilidade. Foi lida como indisponibilidade — e a
+rotina passou a tentar três vezes, esperar, e culpar o portal. Pelo caminho,
+foram acusados: o certificado digital, a senha, a procuração eletrônica, o menu
+do portal, o limite de acesso por IP e a instabilidade do órgão. **Nenhum
+deles.**
+
+O `npm run diagnostico` registrou o que a tela não mostra:
+
+```
+RESPOSTA COM ERRO: 400 POST /servico/certidoes/api/Emissao/verificar
+  corpo: {"statusValidacao":"CaptchaFalhaValidacao","codigo":"023"}
+```
+
+**`CaptchaFalhaValidacao`.** O 023 é o hCaptcha reprovando o navegador
+automatizado. O portal mostra "tente novamente em alguns minutos" e, por baixo,
+diz outra coisa completamente diferente.
+
+No mesmo diário aparece o resto da história: a chave pública do captcha vem de
+`/api/env`, os campos `#h-captcha-response-*` existem e ficam **vazios**, e as
+requisições do widget do hCaptcha são abortadas — nenhum token é produzido,
+então o POST vai sem prova e é recusado.
+
+Isso explica também por que o modo assistido falhou igual: o operador clicou,
+mas não havia desafio na tela para resolver. O captcha invisível pontua a
+sessão e reprova antes de perguntar qualquer coisa.
+
+**O que mudou no código:** a resposta da API passa a ser lida, e o desfecho diz
+a causa com nome — `statusValidacao` e código — em vez de "portal indisponível".
+E não repete: insistir não resolve, e cada tentativa é mais uma batida no mesmo
+portal.
+
+**O que não vai mudar:** fazer o captcha passar exigiria disfarçar a automação
+para não ser reconhecida como automação. É exatamente o que foi recusado quando
+surgiu a proposta do 2captcha, e continua recusado. Os caminhos legítimos são
+três: emitir no navegador do escritório, usar um provedor com acesso autorizado
+(`infosimples` ou `serpro`, já implementados), ou o modo assistido nos portais
+cujo captcha de fato apresenta desafio a um humano — CNDT e SEFAZ/SC.
+
+**Lição:** a mensagem que um sistema mostra ao usuário e a que ele registra
+internamente podem ser histórias diferentes. Ler só a primeira custou um dia.
+
 ---
 
 ## 5. Estado atual, sem maquiagem
@@ -274,11 +324,10 @@ primeira, um `return` no meio do caminho pulava a espera.
 
 **Não funciona ainda:**
 
-- **emitir a CND Federal pelo programa.** O portal responde erro interno / 023,
-  inclusive com clique humano em janela aberta. A causa não está estabelecida —
-  pode ser limite por IP causado pelas nossas próprias tentativas, pode ser
-  hCaptcha invisível, pode ser instabilidade do órgão. **É a pendência número
-  um.**
+- **emitir a CND Federal pelo programa.** Causa **estabelecida** (seção 4.11):
+  o portal exige hCaptcha e reprova o navegador automatizado. Não é limite de
+  IP, não é instabilidade, não é erro interno. Fazer passar significaria
+  disfarçar a automação — e isso não será feito.
 - login do e-CAC: a tela carrega, mas os passos de entrada ainda não foram
   calibrados contra o portal real;
 - FGTS/CRF: seletores nunca calibrados.
@@ -326,8 +375,10 @@ npm test
 
 ## 7. O que fazer em seguida
 
-1. **Descobrir a causa do 023 na CND Federal**, com `npm run diagnostico` — o
-   corpo da resposta da API deve dizer o que a tela não diz.
+1. **Decidir o caminho da CND Federal**, agora que a causa é conhecida
+   (seção 4.11): modo assistido, provedor pago com acesso autorizado
+   (`infosimples` / `serpro`, já implementados, com teto de gasto), ou emissão
+   no navegador do escritório.
 2. Calibrar os passos de login do e-CAC contra o portal real.
 3. Calibrar FGTS/CRF, que nunca foi feito.
 4. Decidir o que fazer com o repositório `Gastos-Casa`, que é **público**. Nada

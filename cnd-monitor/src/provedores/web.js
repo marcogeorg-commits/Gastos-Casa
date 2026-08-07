@@ -295,6 +295,24 @@ export async function consultar({ cliente, idCertidao, env = process.env, compet
     baixado = d;
   });
 
+  // O portal conta a verdade na resposta da API e conta outra coisa na tela.
+  //
+  //   tela:  "Nao foi possivel concluir a acao para o contribuinte informado.
+  //           Por favor, tente novamente dentro de alguns minutos. 023"
+  //   API:   {"statusValidacao":"CaptchaFalhaValidacao","codigo":"023"}
+  //
+  // A frase da tela levou a rotina a tratar como portal fora do ar e tentar de
+  // novo tres vezes -- e levou horas de investigacao pelo caminho errado. O
+  // codigo 023 nao e indisponibilidade: e o captcha reprovando.
+  let validacao = null;
+  pagina.on('response', async (r) => {
+    if (!/\/api\//i.test(r.url())) return;
+    if (!/json/i.test(r.headers()['content-type'] ?? '')) return;
+
+    const corpo = await r.json().catch(() => null);
+    if (corpo?.statusValidacao) validacao = corpo;
+  });
+
   try {
     // Portais publicos trocam de endereco sem aviso (e sem redirecionar), entao
     // a receita pode listar varias URLs. Vale a primeira que abrir com o
@@ -367,6 +385,10 @@ export async function consultar({ cliente, idCertidao, env = process.env, compet
         resultado = { ...doPdf, arquivo };
       }
 
+      // O que a API disse vale mais que a frase da tela: ela nomeia a causa.
+      const traduzido = traduzirValidacao(validacao);
+      if (traduzido && resultado.situacao !== 'negativa') resultado = traduzido;
+
       if (resultado.situacao === 'erro') {
         const captura = await registrarFalha(pagina, idCertidao, cliente);
         if (captura) resultado.detalhe = `${resultado.detalhe} — tela salva em ${captura}`;
@@ -409,5 +431,33 @@ export async function lerDoComprovante(caminho, ler = readFile) {
     situacao,
     detalhe: texto.slice(0, 400),
     validaAte: extrairValidade(texto),
+  };
+}
+
+/**
+ * O que a API do portal respondeu, dito por extenso.
+ *
+ * Sem isso o operador le "tente novamente dentro de alguns minutos" e espera --
+ * por um portal que nao tem problema nenhum. Repetir nao adianta: o captcha vai
+ * reprovar de novo, e cada tentativa e mais uma batida no mesmo portal.
+ */
+export function traduzirValidacao(corpo) {
+  const status = corpo?.statusValidacao;
+  if (!status) return null;
+
+  if (/captcha/i.test(status)) {
+    return {
+      situacao: 'manual',
+      detalhe:
+        'O portal reprovou o captcha (statusValidacao: ' +
+        `${status}, codigo ${corpo.codigo ?? '?'}). A mensagem que ele mostra na tela fala em ` +
+        '"tente novamente dentro de alguns minutos", mas nao e indisponibilidade e repetir nao ' +
+        'resolve. Emita esta certidao no seu navegador, ou use um provedor com acesso autorizado.',
+    };
+  }
+
+  return {
+    situacao: 'manual',
+    detalhe: `O portal recusou a emissao (statusValidacao: ${status}, codigo ${corpo.codigo ?? '?'}).`,
   };
 }
