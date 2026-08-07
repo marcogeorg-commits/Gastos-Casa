@@ -138,6 +138,27 @@ e quando.
 Ficar sem o arquivo nunca derruba a consulta: saber que o cliente está irregular
 vale mesmo sem o papel.
 
+## A certidão emitida à mão entra no sistema
+
+Um portal pode recusar a automação e ainda assim atender uma pessoa — é o caso
+da CND Federal, cujo hCaptcha reprova o navegador automatizado. Emitir à mão
+não pode custar tudo o que vem depois.
+
+```bash
+npm run importar -- ~/Downloads/Certidao42160865000165.pdf
+npm run importar -- ~/Downloads          # a pasta inteira
+```
+
+Ele lê **por dentro do documento**: de quem é (o CNPJ está escrito na
+certidão), qual certidão é (pelo título), se está negativa e até quando vale.
+Arquiva em `certidoes/AAAA-MM/<CNPJ>_<NOME>/` e grava no histórico — daí em
+diante vale tudo: relatório, comparação entre meses e aproveitamento da
+vigência.
+
+Nada é adivinhado. PDF ilegível, ou de um CNPJ que não está no cadastro, é
+recusado com o motivo: certidão arquivada no cliente errado é pior que certidão
+faltando. Reimportar o mesmo arquivo corrige a linha, não duplica.
+
 ## Não reconsultar o que ainda vale
 
 Uma CND federal vale 180 dias; a CRF do FGTS, 30. Antes de consultar, a rotina lê

@@ -56,6 +56,7 @@ src/
   cadeia.js         baixa a cadeia de certificação que o portal não manda
   ca-sistema.js     faz o Node confiar nas autoridades do sistema
   diagnostico.js    diário passo a passo de uma consulta
+  importar.js       traz para dentro a certidão emitida à mão
   calibrar.js       inventaria a tela de um portal para ajustar seletores
 ```
 
@@ -321,6 +322,11 @@ internamente podem ser histórias diferentes. Ler só a primeira custou um dia.
 - guarda do PDF da certidão e leitura da situação de dentro dele;
 - cadeia de certificação: o e-CAC carrega (HTTP 200, tela real);
 - fila única com intervalo entre consultas.
+
+- **importação da certidão emitida à mão**: lê o PDF por dentro, descobre de
+  quem é e qual é, arquiva por cliente e grava no histórico. É o que mantém a
+  carteira inteira funcionando enquanto a emissão automática da CND Federal
+  estiver bloqueada pelo captcha.
 
 **Não funciona ainda:**
 

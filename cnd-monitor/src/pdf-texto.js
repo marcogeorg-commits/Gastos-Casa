@@ -76,8 +76,26 @@ function literais(fluxo) {
 // "CERTIDÊO" -- exigir o "Ã" faria a prova falhar justamente no texto certo.
 const PROVA = /CERTID|RECEITA FEDERAL|FAZENDA NACIONAL|TRIBUTOS FEDERAIS|NEGATIVA/i;
 
+/**
+ * O texto ja esta legivel?
+ *
+ * Sem esta pergunta, qualquer PDF que nao fosse certidao era recusado como
+ * "nao deu para ler" -- mesmo quando a leitura tinha funcionado perfeitamente e
+ * o problema era outro: nao era certidao. Sao coisas diferentes, e so a
+ * segunda o operador consegue resolver.
+ *
+ * O criterio e a proporcao de caracteres que uma frase em portugues tem.
+ */
+export function pareceTexto(s) {
+  const amostra = String(s ?? '').slice(0, 2000);
+  if (amostra.length < 20) return false;
+
+  const legiveis = (amostra.match(/[A-Za-zÀ-ÿ0-9 .,:;/()-]/g) ?? []).length;
+  return legiveis / amostra.length > 0.85;
+}
+
 export function corrigirDeslocamento(bruto) {
-  if (PROVA.test(bruto)) return { texto: bruto, deslocamento: 0 };
+  if (PROVA.test(bruto) || pareceTexto(bruto)) return { texto: bruto, deslocamento: 0 };
 
   for (let d = 1; d <= 64; d += 1) {
     // Inclui os controles: o espaco vem como 0x03 e, sem desloca-lo tambem, as

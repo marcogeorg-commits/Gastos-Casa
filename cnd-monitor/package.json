@@ -14,6 +14,7 @@
     "calibrar": "node src/calibrar.js",
     "cadeia": "node src/cadeia.js",
     "diagnostico": "node src/diagnostico.js",
+    "importar": "node src/importar.js",
     "preparar-web": "npm install playwright && npx playwright install chromium",
     "test": "node --test \"test/*.test.js\""
   },
