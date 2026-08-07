@@ -232,6 +232,25 @@ projeto. O provedor **recusa rodar em integração contínua** (`CI` ou
 na nuvem é risco desproporcional ao problema que resolve, e documentar "não faça
 isso" não impede que aconteça.
 
+### Uma consulta de cada vez, com respiro
+
+Vinte e dois clientes disparados em sequência, sem pausa, é o que faz um portal
+público responder "tente novamente dentro de alguns minutos" — e a partir daí a
+rodada inteira se perde, não só a consulta que passou do limite.
+
+```bash
+npm run consultar -- --certidoes rfb_pgfn --provedor web --intervalo 20
+```
+
+`--intervalo` implica fila única: espalhar a espera entre consultas paralelas
+devolveria a rajada que ela existe para evitar. A pausa vem **entre** uma e a
+seguinte, nunca antes da primeira, e varia até 40% para cima — cadência exata é
+o que um portal mede para se defender de volume. A contagem aparece na tela,
+porque minuto de silêncio parece travamento e a primeira reação é interromper a
+rodada no meio.
+
+Também dá pelo ambiente, para valer em toda rodada: `INTERVALO_CONSULTAS=20000`.
+
 ### "No navegador abre e aqui não"
 
 Se a consulta parar com **"Esta máquina não reconhece a cadeia de certificação

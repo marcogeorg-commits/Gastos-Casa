@@ -128,6 +128,8 @@ cnd-monitor — consulta mensal de certidões da carteira de clientes
   --competencia <AAAA-MM>  padrão: mês corrente
   --saida <pasta>          padrão: raiz do cnd-monitor
   --concorrencia <n>       consultas simultâneas (padrão 4)
+  --intervalo <segundos>   pausa entre uma consulta e a seguinte; implica
+                           fila única. Portal público responde mal a rajada.
   --forcar                 reconsulta mesmo o que ainda está vigente
   --simular                mostra o que seria consultado, sem tocar na rede
 `);
@@ -248,7 +250,11 @@ cnd-monitor — consulta mensal de certidões da carteira de clientes
   const execucao = await executar(config, credenciais, {
     vigentes,
     competencia,
-    concorrencia: assistido ? 1 : Number(args.concorrencia ?? 4),
+    // Pedir intervalo e pedir fila unica: a espera so tem efeito se ninguem
+    // estiver consultando em paralelo enquanto ela corre.
+    intervalo: Number(args.intervalo ?? 0) * 1000,
+    concorrencia:
+      assistido || Number(args.intervalo ?? 0) > 0 ? 1 : Number(args.concorrencia ?? 4),
     env,
     aoProgredir: ({ concluidas, total, resultado }) => {
       const s = descreverSituacao(resultado.situacao);

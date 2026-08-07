@@ -10,6 +10,41 @@ const TENTATIVAS = 3;
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
+ * Pausa entre uma consulta e a seguinte.
+ *
+ * Vinte e dois clientes disparados em sequencia, sem respiro, e o que faz um
+ * portal publico responder "tente novamente dentro de alguns minutos" -- e
+ * depois disso a rodada inteira se perde, nao so a consulta que passou do
+ * limite. Esperar alguns segundos custa minutos por mes e evita isso.
+ *
+ * A variacao existe porque cadencia exata e assinatura de robo. Nao e disfarce:
+ * e nao bater sempre no mesmo compasso, que e o que um portal mede para se
+ * defender de volume.
+ */
+export function proximoIntervalo(base, aleatorio = Math.random) {
+  if (!(base > 0)) return 0;
+  // Ate 40% a mais, nunca menos: o piso e o intervalo pedido.
+  return Math.round(base * (1 + aleatorio() * 0.4));
+}
+
+/**
+ * Espera contando na tela.
+ *
+ * Minuto de silencio parece travamento -- e a primeira reacao de quem ve isso
+ * e interromper a rodada no meio.
+ */
+export async function esperarContando(ms, avisar = () => {}, dormir = esperar) {
+  if (!(ms > 0)) return;
+
+  let restante = Math.round(ms / 1000);
+  while (restante > 0) {
+    avisar(`      aguardando ${restante}s antes da próxima consulta`);
+    await dormir(1000);
+    restante -= 1;
+  }
+}
+
+/**
  * O provedor escolhido sabe consultar esta certidao?
  *
  * Antes isso era um flag fixo no catalogo (`apenasManual`), o que amarrava a
@@ -66,15 +101,26 @@ async function comRetentativa(fn, tentativas = TENTATIVAS) {
   throw ultimoErro;
 }
 
-/** Executa `tarefas` respeitando um limite de chamadas simultaneas. */
-async function emLotes(tarefas, concorrencia, fn) {
+/**
+ * Executa `tarefas` respeitando um limite de chamadas simultaneas.
+ *
+ * Com `intervalo`, espera entre uma e a seguinte -- e so faz sentido em fila
+ * unica: com varios trabalhadores, cada um esperaria por conta e o efeito no
+ * portal seria o de sempre.
+ */
+async function emLotes(tarefas, concorrencia, fn, { intervalo = 0, avisar } = {}) {
   const resultados = new Array(tarefas.length);
   let proxima = 0;
+  const emFila = intervalo > 0 && concorrencia === 1;
 
   const trabalhador = async () => {
     while (proxima < tarefas.length) {
       const i = proxima;
       proxima += 1;
+
+      // Depois da primeira, nao antes: ninguem quer esperar para comecar.
+      if (emFila && i > 0) await esperarContando(proximoIntervalo(intervalo), avisar);
+
       resultados[i] = await fn(tarefas[i], i);
     }
   };
@@ -92,6 +138,10 @@ export async function executar(config, credenciais, opcoes = {}) {
     env = process.env,
     // Certidoes ainda vigentes: consultadas antes, com validade no futuro.
     vigentes = new Map(),
+    // Pausa entre uma consulta e a seguinte, em milissegundos. So vale em fila
+    // unica (`concorrencia: 1`) -- espalhar a espera entre varios trabalhadores
+    // devolveria a rajada que ela existe para evitar.
+    intervalo = Number(env.INTERVALO_CONSULTAS ?? 0),
   } = opcoes;
   const tarefas = montarTarefas(config);
   const avisos = [...config.avisos];
@@ -128,7 +178,10 @@ export async function executar(config, credenciais, opcoes = {}) {
   let concluidas = 0;
   let resultados;
   try {
-    resultados = await emLotes(tarefas, concorrencia, async (tarefa) => {
+    resultados = await emLotes(
+      tarefas,
+      concorrencia,
+      async (tarefa) => {
       // Aproveitar o que ainda vale poupa a consulta e, no modo assistido, um
       // captcha que uma pessoa teria de resolver sem necessidade.
       const anterior = vigentes.get(chaveDe(tarefa.cliente.documento, tarefa.idCertidao));
@@ -160,7 +213,9 @@ export async function executar(config, credenciais, opcoes = {}) {
       concluidas += 1;
       aoProgredir?.({ concluidas, total: tarefas.length, resultado });
       return resultado;
-    });
+      },
+      { intervalo, avisar: opcoes.registrar ?? ((m) => console.error(m)) },
+    );
   } finally {
     // Provedores com recurso pesado (o "web" mantem um Chromium aberto para a
     // rodada inteira) precisam desligar mesmo se algo estourar no meio.
