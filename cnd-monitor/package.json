@@ -13,6 +13,7 @@
     "painel": "node src/servidor.js",
     "calibrar": "node src/calibrar.js",
     "cadeia": "node src/cadeia.js",
+    "diagnostico": "node src/diagnostico.js",
     "preparar-web": "npm install playwright && npx playwright install chromium",
     "test": "node --test \"test/*.test.js\""
   },

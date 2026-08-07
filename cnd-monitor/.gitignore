@@ -33,6 +33,10 @@ vinculos.json
 # cada portal apresenta e de quando foram baixadas. Basta rodar de novo.
 ca/
 
+# Diarios do `npm run diagnostico`: tem CNPJ de cliente e a resposta crua do
+# orgao, inclusive corpo de API. Ficam no disco do escritorio.
+diagnostico/
+
 # As certidoes emitidas. Sao documentos fiscais dos clientes: ficam no disco do
 # escritorio, nao no repositorio. Basta rodar de novo para reemitir.
 certidoes/
