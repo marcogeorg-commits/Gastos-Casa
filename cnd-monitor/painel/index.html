@@ -824,6 +824,69 @@ function relerCertificados() {
 // ---------------------------------------------------------------------------
 // Aba: competências
 // ---------------------------------------------------------------------------
+/**
+ * Recolher as certidoes emitidas a mao.
+ *
+ * O portal da Receita recusa navegador automatizado, entao a emissao continua
+ * sendo do operador. O que nao precisa ser dele e o resto: descobrir de quem e
+ * cada PDF, arquivar por cliente e alimentar o historico. Sem este botao, isso
+ * so existia na linha de comando -- e o painel e a interface da casa.
+ */
+function blocoImportar() {
+  return `
+    <section>
+      <h2>Certidões emitidas à mão</h2>
+      <div class="cartao">
+        <p class="ajuda">Emita no navegador, salve os PDFs numa pasta e aponte-a aqui.
+          O programa lê cada documento por dentro, descobre de quem é e arquiva
+          no cliente certo.</p>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start">
+          <div style="flex:1 1 280px;max-width:420px">
+            <input id="recolher-pasta" type="text" spellcheck="false" autocomplete="off"
+                   placeholder="/Users/você/Downloads"
+                   value="${esc(estado.pastaImportacao ?? '')}">
+          </div>
+          <button id="recolher" class="principal">Recolher certidões</button>
+        </div>
+        <div id="recolher-saida" class="ajuda" style="margin-top:12px"></div>
+      </div>
+    </section>`;
+}
+
+async function recolherCertidoes() {
+  const pasta = document.getElementById('recolher-pasta').value.trim();
+  const saida = document.getElementById('recolher-saida');
+
+  if (!pasta) {
+    saida.textContent = 'Informe a pasta onde estão os PDFs.';
+    return;
+  }
+
+  estado.pastaImportacao = pasta;
+  saida.textContent = 'Lendo os documentos...';
+
+  try {
+    const r = await api('/api/importar', { method: 'POST', body: JSON.stringify({ pasta }) });
+
+    // O que entrou vem primeiro e sozinho: numa pasta de escritorio, as duas
+    // certidoes que estavam la nao podem sumir no meio de duzentos avisos.
+    const linhas = r.entraram.map(
+      (e) => `✓ ${esc(e.cliente)} — ${esc(CERTIDOES[e.certidao]?.nome ?? e.certidao)} · ` +
+             `${esc(SITUACOES[e.situacao]?.rotulo ?? e.situacao)}` +
+             (e.validaAte ? ` · vale até ${esc(e.validaAte)}` : ''),
+    );
+
+    if (linhas.length === 0) linhas.push('Nenhuma certidão encontrada nesta pasta.');
+    for (const p of r.problemas) linhas.push(`✗ ${esc(p.arquivo)} — ${esc(p.erro)}`);
+    if (r.ignorados > 0) linhas.push(`${r.ignorados} arquivo(s) ignorado(s) — não são certidões.`);
+
+    saida.innerHTML = linhas.join('<br>');
+    await carregar();
+  } catch (erro) {
+    saida.textContent = `Não deu: ${erro.message}`;
+  }
+}
+
 function renderCompetencias() {
   const alvo = document.getElementById('painel-competencias');
   const lista = estado.competencias;
@@ -864,6 +927,8 @@ function renderCompetencias() {
       </div>`;
 
   alvo.innerHTML = `
+    ${blocoImportar()}
+
     ${mensais.length ? `<section>
       <h2>Rodadas da carteira <span class="conta">${mensais.length}</span></h2>
       ${tabela(mensais, 'Competência', (r) => r)}
@@ -1115,6 +1180,11 @@ document.addEventListener('click', async (e) => {
   }
 
   if (e.target.id === 'importar') { document.getElementById('arquivo').click(); return; }
+
+  if (e.target.id === 'recolher') {
+    await recolherCertidoes();
+    return;
+  }
 
   const consultar = e.target.closest('[data-consultar]');
   if (consultar) {

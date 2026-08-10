@@ -365,6 +365,42 @@ async function tratarApi(req, res, rota, raiz, porta) {
     return;
   }
 
+  // Recolhe as certidoes emitidas a mao. Roda neste processo: e leitura de
+  // arquivo, rapida, e o operador espera a resposta olhando a tela.
+  if (rota === '/api/importar' && req.method === 'POST') {
+    const corpo = await lerCorpo(req);
+    const pasta = String(corpo.pasta ?? '').trim();
+    if (!pasta) {
+      responderJson(res, 400, { erro: 'Informe a pasta onde estão os PDFs.' });
+      return;
+    }
+
+    const { importar } = await import('./importar.js');
+    try {
+      const { competencia, importados } = await importar([pasta], { raiz });
+      responderJson(res, 200, {
+        competencia,
+        // O painel so precisa do desfecho; a lista inteira traria duzentos
+        // "nao e certidao" para a tela do operador.
+        entraram: importados
+          .filter((i) => !i.erro && !i.ignorado)
+          .map((i) => ({
+            cliente: i.cliente,
+            certidao: i.idCertidao,
+            situacao: i.situacao,
+            validaAte: i.validaAte ?? null,
+          })),
+        problemas: importados
+          .filter((i) => i.erro)
+          .map((i) => ({ arquivo: i.caminho.split('/').pop(), erro: i.erro })),
+        ignorados: importados.filter((i) => i.ignorado).length,
+      });
+    } catch (erro) {
+      responderJson(res, 400, { erro: erro.message ?? String(erro) });
+    }
+    return;
+  }
+
   if (rota === '/api/rodada' && req.method === 'GET') {
     responderJson(res, 200, {
       ativa: rodada.ativa,

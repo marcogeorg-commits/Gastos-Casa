@@ -138,6 +138,28 @@ e quando.
 Ficar sem o arquivo nunca derruba a consulta: saber que o cliente está irregular
 vale mesmo sem o papel.
 
+## A fila de emissão
+
+Quando o portal recusa a automação, a emissão é sua — mas só ela.
+
+```bash
+npm run fila
+```
+
+Para cada cliente que **precisa** de certidão este mês (quem tem uma vigente
+fica de fora), o programa põe o CNPJ na área de transferência **sem pontuação**,
+abre o portal no seu navegador e espera. Você cola, clica em Emitir, salva.
+Enter passa ao próximo. No fim ele recolhe sozinho os PDFs da pasta de
+downloads e arquiva cada um no cliente certo.
+
+Sobram três gestos por cliente: colar, clicar, salvar. Sem digitar CNPJ, sem
+conferir lista, sem perder a conta no meio de vinte e dois.
+
+```bash
+npm run fila -- --certidao cndt    # outra certidão
+npm run fila -- --forcar           # inclui quem já tem vigente
+```
+
 ## A certidão emitida à mão entra no sistema
 
 Um portal pode recusar a automação e ainda assim atender uma pessoa — é o caso
@@ -148,6 +170,9 @@ não pode custar tudo o que vem depois.
 npm run importar -- ~/Downloads/Certidao42160865000165.pdf
 npm run importar -- ~/Downloads          # a pasta inteira
 ```
+
+No painel, a mesma coisa: aba **Competências**, campo da pasta, botão
+**Recolher certidões**.
 
 Ele lê **por dentro do documento**: de quem é (o CNPJ está escrito na
 certidão), qual certidão é (pelo título), se está negativa e até quando vale.

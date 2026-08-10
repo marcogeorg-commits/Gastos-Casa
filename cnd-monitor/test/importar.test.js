@@ -273,3 +273,72 @@ test('o trecho guardado comeca na certidao, nao no lixo da fonte', async () => {
   assert.equal(trecho('texto sem titulo nenhum'), 'texto sem titulo nenhum');
   assert.equal(trecho(null), '');
 });
+
+/**
+ * O painel e a interface da casa.
+ *
+ * Recolher certidao emitida a mao so existia na linha de comando -- e o
+ * operador pediu um painel no primeiro dia justamente para nao decorar
+ * comando. O endpoint devolve so o desfecho: a lista inteira traria duzentos
+ * "nao e certidao" para a tela.
+ */
+test('o painel recolhe as certidões pelo endpoint, e recebe só o desfecho', async () => {
+  const { criarServidor } = await import('../src/servidor.js');
+  const { TOKEN } = await import('../src/servidor.js');
+  const { symlink } = await import('node:fs/promises');
+  const { resolve } = await import('node:path');
+
+  const raiz = await mkdtemp(join(tmpdir(), 'cnd-api-'));
+  await mkdir(join(raiz, 'entrada'), { recursive: true });
+  await symlink(resolve(import.meta.dirname, '../painel'), join(raiz, 'painel'), 'dir');
+  await writeFile(join(raiz, 'clientes.json'), JSON.stringify(CONFIG));
+
+  await writeFile(join(raiz, 'entrada', 'certidao.pdf'), pdfFalso(CND_FEDERAL));
+  await writeFile(join(raiz, 'entrada', 'balancete.pdf'), pdfFalso('BALANCETE mensal', 0));
+
+  const servidor = criarServidor(raiz);
+  await new Promise((ok) => servidor.listen(0, '127.0.0.1', ok));
+
+  try {
+    const r = await fetch(`http://127.0.0.1:${servidor.address().port}/api/importar`, {
+      method: 'POST',
+      headers: { 'x-token': TOKEN, 'content-type': 'application/json' },
+      body: JSON.stringify({ pasta: join(raiz, 'entrada') }),
+    });
+
+    assert.equal(r.status, 200);
+    const corpo = await r.json();
+
+    assert.equal(corpo.entraram.length, 1);
+    assert.equal(corpo.entraram[0].cliente, 'Alfa Comércio Ltda');
+    assert.equal(corpo.entraram[0].situacao, 'negativa');
+    // O balancete conta, mas nao ocupa a tela.
+    assert.equal(corpo.ignorados, 1);
+  } finally {
+    servidor.close();
+  }
+});
+
+test('pasta em branco é recusada antes de tocar em disco', async () => {
+  const { criarServidor, TOKEN } = await import('../src/servidor.js');
+  const { symlink } = await import('node:fs/promises');
+  const { resolve } = await import('node:path');
+
+  const raiz = await mkdtemp(join(tmpdir(), 'cnd-api-'));
+  await symlink(resolve(import.meta.dirname, '../painel'), join(raiz, 'painel'), 'dir');
+
+  const servidor = criarServidor(raiz);
+  await new Promise((ok) => servidor.listen(0, '127.0.0.1', ok));
+
+  try {
+    const r = await fetch(`http://127.0.0.1:${servidor.address().port}/api/importar`, {
+      method: 'POST',
+      headers: { 'x-token': TOKEN, 'content-type': 'application/json' },
+      body: JSON.stringify({ pasta: '   ' }),
+    });
+    assert.equal(r.status, 400);
+    assert.match((await r.json()).erro, /Informe a pasta/);
+  } finally {
+    servidor.close();
+  }
+});

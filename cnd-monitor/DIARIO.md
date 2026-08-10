@@ -57,6 +57,8 @@ src/
   ca-sistema.js     faz o Node confiar nas autoridades do sistema
   diagnostico.js    diário passo a passo de uma consulta
   importar.js       traz para dentro a certidão emitida à mão
+  fila.js           conduz a emissão manual: quem falta, CNPJ na área de
+                    transferência, portal aberto, e recolhe no fim
   calibrar.js       inventaria a tela de um portal para ajustar seletores
 ```
 
@@ -323,6 +325,9 @@ internamente podem ser histórias diferentes. Ler só a primeira custou um dia.
 - cadeia de certificação: o e-CAC carrega (HTTP 200, tela real);
 - fila única com intervalo entre consultas.
 
+- **fila de emissão** (`npm run fila`) e o botão **Recolher certidões** no
+  painel: a máquina cuida de quem falta, da ordem, do CNPJ na área de
+  transferência e do arquivamento. Sobram três gestos por cliente.
 - **importação da certidão emitida à mão**: lê o PDF por dentro, descobre de
   quem é e qual é, arquiva por cliente e grava no histórico. É o que mantém a
   carteira inteira funcionando enquanto a emissão automática da CND Federal
